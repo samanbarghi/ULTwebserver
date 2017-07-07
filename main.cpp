@@ -45,36 +45,27 @@ using uThreads::io::Connection;
 #define LOG_ERROR(msg) perror(msg);
 #define    HTTP_REQUEST_HEADER_END    "\n\r\n\r"
 
+#define likely(x)   __builtin_expect(!!(x),1)
+#define unlikely(x) __builtin_expect(!!(x),0)
+
+
 Connection *sconn; //Server socket
 
 ssize_t read_http_request(Connection &cconn, void *vptr, size_t n) {
 
-    size_t nleft;
     ssize_t nread;
-    char *ptr;
-
-    ptr = (char *) vptr;
-    nleft = n;
-
     uThread::yield(); //yield before read
-    //TODO(saman): Optimize conditions here!
-    while (nleft > 0) {
-        if ((nread = cconn.recv(ptr, INPUT_BUFFER_LENGTH - 1, 0)) < 0) {
-            if (errno == EINTR)
-                nread = 0;
-            else
-                return (-1);
-        } else if (nread == 0) // connection is closed
-            return 0;
-
-        nleft -= nread;
-        ptr += nread;
-
-        // if we read data and it does not fill the buffer, return
-        if (nread && nread < INPUT_BUFFER_LENGTH)
-            break;
-    }
-    return (n - nleft);
+    do {
+        nread = cconn.recv(vptr, n, 0);
+        if (unlikely(nread <= 0)) {
+            // connection was closed
+            if (nread == 0 || errno != EINTR)
+                return 0;
+            // Otherwise, 'read' was interrupted so try again
+        }
+        // nread > 0 -> read successful
+        return nread;
+    } while (true);
 }
 
 ssize_t writen(Connection &cconn, const void *vptr, size_t n) {
@@ -127,37 +118,37 @@ void *handle_connection(void *arg) {
                 printf("fd %d\n", cconn->getFd());
             }
             break;
-        }else if(nrecvd == 0) //connection closed
+        } else if (nrecvd == 0) //connection closed
             break;
         prevbuflen = buflen;
         buflen += nrecvd;
 
-parse:
-        pret = phr_parse_request(buffer+num_parsed, buflen-num_parsed, &method, &method_len, &path, &path_len,
+        parse:
+        pret = phr_parse_request(buffer + num_parsed, buflen - num_parsed, &method, &method_len, &path, &path_len,
                                  &minor_version, headers, &num_headers, prevbuflen);
 
-        if(pret > 0) { // parse successful
+        if (pret > 0) { // parse successful
             num_parsed += pret;
             //std::cout << buflen << ":" << num_parsed << std::endl;
             //printf("method is %.*s\n", (int)method_len, method);
             writen(*cconn, RESPONSE_OK, sizeof(RESPONSE_OK));
-            if(num_parsed == buflen) {
+            if (num_parsed == buflen) {
                 //reset buffer numbers
                 buflen = prevbuflen = 0;
                 num_parsed = 0;
-            }else{
+            } else {
                 // prevbuf should be set to 0 to avoid assuming partial parsing
                 prevbuflen = 0;
                 goto parse;
             }
-        }else if(pret == -1) { // error
+        } else if (pret == -1) { // error
             LOG_ERROR("Error in Parsing the request!");
             //reset buffer numbers
             buflen = prevbuflen = 0;
             num_parsed = 0;
         } //else pret == -2, partial -> keep reading
 
-        if(buflen == INPUT_BUFFER_LENGTH){
+        if (buflen == INPUT_BUFFER_LENGTH) {
             LOG_ERROR("Request is too long!");
         }
         /*
