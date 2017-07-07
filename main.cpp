@@ -59,8 +59,10 @@ ssize_t read_http_request(Connection &cconn, void *vptr, size_t n) {
         nread = cconn.recv(vptr, n, 0);
         if (unlikely(nread <= 0)) {
             // connection was closed
-            if (nread == 0 || errno != EINTR)
+            if (nread == 0)
                 return 0;
+            else if(errno != EINTR)
+               return -1;
             // Otherwise, 'read' was interrupted so try again
         }
         // nread > 0 -> read successful
