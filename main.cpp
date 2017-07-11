@@ -15,7 +15,8 @@ using uThreads::runtime::Cluster;
 using uThreads::io::Connection;
 
 #define PORT 8800
-#define INPUT_BUFFER_LENGTH 2048 //4 KB
+#define INPUT_BUFFER_LENGTH 1048 //4 KB
+#define OUTPUT_BUFFER_LENGTH 2048 //4 KB
 #define MAXIMUM_THREADS_PER_CLUSTER 8
 
 /* HTTP responses*/
@@ -32,13 +33,15 @@ using uThreads::io::Connection;
 
 // To avoid file io, only return a simple HelloWorld!
 #define RESPONSE_OK "HTTP/1.1 200 OK\r\n" \
-                    "Content-Length: 21\r\n" \
-                    "Content-Type: text/html\r\n" \
-                    "Connection: keep-alive\r\n" \
-                    "Server: uThreads-http\r\n" \
+                    "Content-Length: 13\r\n" \
+                    "Content-Type: text/plain\r\n" \
+                    "Date: Wed, 17 May 2017 19:48:59 GMT\r\n" \
+                    "Server: u\r\n" \
                     "\r\n" \
-                    "<p>Hello World!</p>\n"
+                    "Hello, World!"
 
+
+//                    "Connection: keep-alive\r\n" \
 /* Logging */
 #define LOG(msg) puts(msg);
 #define LOGF(fmt, params...) printf(fmt "\n", params);
@@ -48,6 +51,7 @@ using uThreads::io::Connection;
 #define likely(x)   __builtin_expect(!!(x),1)
 #define unlikely(x) __builtin_expect(!!(x),0)
 
+#define HTTP_HEADERS_MAX 32
 
 Connection *sconn; //Server socket
 
@@ -99,81 +103,79 @@ void *handle_connection(void *arg) {
     Connection *cconn = (Connection *) arg;
 
     char buffer[INPUT_BUFFER_LENGTH]; //read buffer from the socket
+    char output_buffer[OUTPUT_BUFFER_LENGTH]; //write buffer to the socket
     bzero(buffer, INPUT_BUFFER_LENGTH);
+    bzero(output_buffer, OUTPUT_BUFFER_LENGTH);
 
     const char *method, *path;
     int pret, minor_version;
-    struct phr_header headers[100];
-    size_t buflen = 0, prevbuflen = 0, num_parsed = 0, method_len, path_len, num_headers;
+    struct phr_header headers[HTTP_HEADERS_MAX];
+    size_t buflen = 0, prevbuflen = 0, num_parsed = 0, method_len, path_len, num_headers = HTTP_HEADERS_MAX;
     ssize_t nrecvd; //return value for for the read() and write() calls.
-
-    num_headers = sizeof(headers) / sizeof(phr_header);
+    size_t output_length = 0;
 
     do {
-        //Since we only accept GET, just try to read INPUT_BUFFER_LENGTH
-        nrecvd = read_http_request(*cconn, buffer + buflen, INPUT_BUFFER_LENGTH - buflen);
-        if (nrecvd == -1) {
-            //if RST packet by browser, just close the connection
-            //no need to show an error.
-            if (errno != ECONNRESET) {
-                LOG_ERROR("Error reading from socket");
-                printf("fd %d\n", cconn->getFd());
+        num_headers = HTTP_HEADERS_MAX;
+        if(!num_parsed) {
+            //Since we only accept GET, just try to read INPUT_BUFFER_LENGTH
+            nrecvd = read_http_request(*cconn, buffer + buflen, INPUT_BUFFER_LENGTH - buflen);
+            if (nrecvd == -1) {
+                //if RST packet by browser, just close the connection
+                //no need to show an error.
+                if (errno != ECONNRESET) {
+                    LOG_ERROR("Error reading from socket");
+                    printf("fd %d\n", cconn->getFd());
+                }
+                break;
+            } else if (nrecvd == 0) { //connection closed
+                //std::cout << "Closed Connection" << std::endl;
+                break;
             }
-            break;
-        } else if (nrecvd == 0) //connection closed
-            break;
-        prevbuflen = buflen;
-        buflen += nrecvd;
+            prevbuflen = buflen;
+            buflen += nrecvd;
+//            printf("%.*s\n", nrecvd, buffer);
+//            printf("=============================== \n");
 
-        parse:
-        pret = phr_parse_request(buffer + num_parsed, buflen - num_parsed, &method, &method_len, &path, &path_len,
+        }
+       pret = phr_parse_request(buffer + num_parsed, buflen - num_parsed, &method, &method_len, &path, &path_len,
                                  &minor_version, headers, &num_headers, prevbuflen);
 
-        if (pret > 0) { // parse successful
+        if (likely(pret > 0)) { // parse successful
             num_parsed += pret;
-            //std::cout << buflen << ":" << num_parsed << std::endl;
+            //std::cout << buflen << ":" << num_parsed << ":" << ++num_requests << std::endl;
             //printf("method is %.*s\n", (int)method_len, method);
-            writen(*cconn, RESPONSE_OK, sizeof(RESPONSE_OK));
+            strncpy(output_buffer + output_length, RESPONSE_OK, strlen(RESPONSE_OK));
+            output_length += strlen(RESPONSE_OK);
             if (num_parsed == buflen) {
                 //reset buffer numbers
+                writen(*cconn, output_buffer, output_length);
+                output_length = 0;
                 buflen = prevbuflen = 0;
                 num_parsed = 0;
             } else {
                 // prevbuf should be set to 0 to avoid assuming partial parsing
                 prevbuflen = 0;
-                goto parse;
             }
         } else if (pret == -1) { // error
             LOG_ERROR("Error in Parsing the request!");
             //reset buffer numbers
             buflen = prevbuflen = 0;
             num_parsed = 0;
+            output_length = 0;
         } //else pret == -2, partial -> keep reading
 
         if (buflen == INPUT_BUFFER_LENGTH) {
             LOG_ERROR("Request is too long!");
         }
-        /*
-        } else {
-            //We only handle GET Requests
-            if (parser->method == 1) {
-                //Write the response
-                writen(*cconn, RESPONSE_OK, sizeof(RESPONSE_OK));
-            } else {
-                //Method is not allowed
-                writen(*cconn, RESPONSE_METHOD_NOT_ALLOWED, sizeof(RESPONSE_METHOD_NOT_ALLOWED));
-            }
-        }*/
-        //reset data
     } while (true);
 
     cconn->close();
-    //free(my_data);
     delete cconn;
 }
 
 void intHandler(int sig) {
     sconn->close();
+    delete sconn;
     exit(1);
 }
 
