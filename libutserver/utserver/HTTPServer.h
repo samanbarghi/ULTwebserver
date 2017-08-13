@@ -39,7 +39,7 @@ class HTTPServer {
         exit(1);
     }
  public:
-    HTTPServer(int p, size_t tc) : port(port), thread_count(tc), defaultCluster(uThreads::runtime::Cluster::getDefaultCluster()) {
+    HTTPServer(int p, size_t tc) : port(p), thread_count(tc), defaultCluster(uThreads::runtime::Cluster::getDefaultCluster()) {
         //Create clusters based on MAXIMUM_THREADS_PER_CLUSTER
         cluster_count = (thread_count / (MAXIMUM_THREADS_PER_CLUSTER + 1)) + 1;
 
