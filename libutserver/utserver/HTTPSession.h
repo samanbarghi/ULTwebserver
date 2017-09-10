@@ -7,17 +7,20 @@
 
 #include "uThreads/uThreads.h"
 #include "base.h"
-#include "HTTPRequest.h"
-#include "HTTPResponse.h"
 
 namespace utserver {
 class HTTPServer;
+class HTTPResponse;
+class HTTPRequest;
 class HTTPSession {
+    friend class HTTPResponse;
  private:
     uThreads::io::Connection *connection;
     HTTPServer& server;
  public:
     HTTPSession(HTTPServer& s, uThreads::io::Connection* c) : connection(c), server(s) {};
+    void serve();
+    const HTTPResponse buildResponse(HTTPRequest& request);
 
     static void *handle_connection(void *arg1, void *arg2) {
         HTTPServer *server = (HTTPServer*) arg1;
@@ -28,28 +31,6 @@ class HTTPSession {
         delete ccon;
     }
 
-    void serve() {
-        HTTPRequest request(*connection);
-        HTTPResponse response(*connection);
-        while(request.read()){
-            switch(request.parse()){
-                case HTTPRequest::ParserResult::Pipelined:
-                    response.concat();
-                    break;
-                case HTTPRequest::ParserResult::Complete:
-                    response.concat();
-                    response.write();
-                    request.reset();
-                    break;
-                case HTTPRequest::ParserResult::Error:
-                case HTTPRequest::ParserResult::Overflow:
-                    request.reset();
-                case HTTPRequest::ParserResult::Partial:
-                    // keep reading
-                    break;
-            };
-        }
-    }
     ~HTTPSession() {}
 };
 }

@@ -6,12 +6,15 @@
 #define NEWWEBSERVER_HTTPREQUEST_H
 #include "base.h"
 #include "uThreads/uThreads.h"
+#include "strings.h"
+#include <experimental/string_view>
 #include "../../picohttpparser/picohttpparser.h"
 
 namespace utserver {
+class HTTPSession;
 class HTTPRequest {
+    friend class HTTPSession;
     char buffer[INPUT_BUFFER_LENGTH]; //read buffer from the socket
-    size_t bufflen;
     ssize_t nrecvd; //return value for for the read()
 
     // parser related variables
@@ -21,7 +24,7 @@ class HTTPRequest {
     struct phr_header headers[HTTP_HEADERS_MAX];
 
     uThreads::io::Connection& connection;
- public:
+
     HTTPRequest(uThreads::io::Connection& c): connection(c), buflen(0), prevbuflen(0), num_parsed(0), method_len(0), path_len(0), num_headers(HTTP_HEADERS_MAX){
         bzero(buffer, INPUT_BUFFER_LENGTH);
     };
@@ -96,6 +99,21 @@ class HTTPRequest {
         }
         return ParserResult::Partial;
     }
+ public:
+    int const getMinorVersion() const{
+        return minor_version;
+    }
+
+    const std::experimental::string_view getMethod() const {
+        return std::experimental::string_view(method, method_len);
+    }
+
+    const std::experimental::string_view getPath() const{
+        return std::experimental::string_view(path, path_len);
+    }
+
+    // TODO: wrap headers in string_view and return them
+
 };
 } // namespace utserver
 
