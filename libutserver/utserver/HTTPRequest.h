@@ -5,15 +5,17 @@
 #ifndef NEWWEBSERVER_HTTPREQUEST_H
 #define NEWWEBSERVER_HTTPREQUEST_H
 #include "base.h"
-#include "uThreads/uThreads.h"
 #include "strings.h"
 #include <experimental/string_view>
 #include "../../picohttpparser/picohttpparser.h"
 
 namespace utserver {
 class HTTPSession;
+class HTTPInputStream;
+
 class HTTPRequest {
     friend class HTTPSession;
+    friend class HTTPInputStream;
     char buffer[INPUT_BUFFER_LENGTH]; //read buffer from the socket
     ssize_t nrecvd; //return value for for the read()
 
@@ -23,9 +25,7 @@ class HTTPRequest {
     size_t buflen, prevbuflen, num_parsed, method_len, path_len, num_headers;
     struct phr_header headers[HTTP_HEADERS_MAX];
 
-    uThreads::io::Connection& connection;
-
-    HTTPRequest(uThreads::io::Connection& c): connection(c), buflen(0), prevbuflen(0), num_parsed(0), method_len(0), path_len(0), num_headers(HTTP_HEADERS_MAX){
+    HTTPRequest(): buflen(0), prevbuflen(0), num_parsed(0), method_len(0), path_len(0), num_headers(HTTP_HEADERS_MAX){
         bzero(buffer, INPUT_BUFFER_LENGTH);
     };
 
@@ -36,38 +36,6 @@ class HTTPRequest {
             Overflow,
             Error
     };
-
-    bool read() {
-        num_headers = HTTP_HEADERS_MAX;
-        // Should we read again? or just parse what is left in the buffer?
-        if(!num_parsed) {
-            //Since we only accept GET, just try to read INPUT_BUFFER_LENGTH
-            uThread::yield(); //yield before read
-            do {
-                nrecvd = connection.recv(buffer + buflen , INPUT_BUFFER_LENGTH - buflen, 0);
-                if (unlikely(nrecvd<= 0)) {
-                    // connection was closed
-                    if (nrecvd == 0)
-                        return 0;
-                    else if(errno != EINTR){
-                       //if RST packet by browser, just close the connection
-                       //no need to show an error.
-                        if(errno != ECONNRESET){
-                            LOG_ERROR("Error reading from socket");
-                            printf("fd %d\n", connection.getFd());
-                        }
-                        return false;
-                    }
-                    // Otherwise, 'read' was interrupted so try again
-                }
-                // nrecvd > 0 -> read successful
-                break;
-            } while (true);
-            prevbuflen = buflen;
-            buflen += nrecvd;
-        }
-        return true;
-    }
 
     void reset(){
         buflen = prevbuflen = 0;

@@ -5,16 +5,59 @@
 #ifndef NEWWEBSERVER_HTTPSTREAM_H
 #define NEWWEBSERVER_HTTPSTREAM_H
 #include "base.h"
-#include "uThreads/uThreads.h"
 #include <string.h>
 
 namespace utserver{
 class HTTPSession;
+class HTTPRequest;
 class HTTPresponse;
+
+class HTTPInputStream{
+    friend class HTTPRequest;
+    friend class HTTPSession;
+
+    HTTPSession& session;
+
+    HTTPInputStream(HTTPSession& s): session(s){};
+
+    bool read(HTTPRequest& request) {
+
+        ssize_t nrecvd; //return value for for the read()
+        request.num_headers = HTTP_HEADERS_MAX;
+        // Should we read again? or just parse what is left in the buffer?
+        if(!request.num_parsed) {
+            //Since we only accept GET, just try to read INPUT_BUFFER_LENGTH
+            session.yield();
+            do {
+                nrecvd = session.recv(request.buffer + request.buflen , INPUT_BUFFER_LENGTH - request.buflen, 0);
+                if (unlikely(nrecvd<= 0)) {
+                    // connection was closed
+                    if (nrecvd == 0)
+                        return 0;
+                    else if(errno != EINTR){
+                        //if RST packet by browser, just close the connection
+                        //no need to show an error.
+                        if(errno != ECONNRESET){
+                            LOG_ERROR("Error reading from socket");
+                            printf("fd %d\n", session.getFD());
+                        }
+                        return false;
+                    }
+                    // Otherwise, 'read' was interrupted so try again
+                }
+                // nrecvd > 0 -> read successful
+                break;
+            } while (true);
+            request.prevbuflen = request.buflen;
+            request.buflen += nrecvd;
+        }
+        return true;
+    }
+};
+
 class HTTPOutputStream{
     friend class HTTPResponse;
     friend class HTTPSession;
-    uThreads::io::Connection& connection;
     HTTPSession& session;
 
     // output buffer
@@ -23,7 +66,7 @@ class HTTPOutputStream{
 
 
  public:
-    HTTPOutputStream(HTTPSession& httpsession, uThreads::io::Connection& c): session(httpsession), connection(c), output_length(0){
+    HTTPOutputStream(HTTPSession& httpsession): session(httpsession), output_length(0){
             bzero(output_buffer, OUTPUT_BUFFER_LENGTH);
     }
  private:
@@ -63,7 +106,7 @@ class HTTPOutputStream{
         nleft = length;
 
         while (nleft > 0) {
-            if ((nwritten = connection.send(ptr, nleft, 0)) <= 0) {
+            if ((nwritten = session.send(ptr, nleft, 0)) <= 0) {
                 if (errno == EINTR)
                     nwritten = 0; /* If interrupted system call => call the write again */
                 else

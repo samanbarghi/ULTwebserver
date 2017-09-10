@@ -4,35 +4,34 @@
 
 #ifndef NEWWEBSERVER_HTTPSESSION_H
 #define NEWWEBSERVER_HTTPSESSION_H
-
-#include "uThreads/uThreads.h"
+#include <cstdint>
+#include <cstddef>
+#include <unistd.h>
 #include "base.h"
-
 namespace utserver {
 class HTTPServer;
 class HTTPResponse;
 class HTTPRequest;
 class HTTPSession {
     friend class HTTPResponse;
+    friend class HTTPRequest;
  private:
-    uThreads::io::Connection *connection;
     HTTPServer& server;
  public:
-    HTTPSession(HTTPServer& s, uThreads::io::Connection* c) : connection(c), server(s) {};
+    HTTPSession(HTTPServer& s) : server(s) {};
     void serve();
     const HTTPResponse buildResponse(HTTPRequest& request);
 
-    static void *handle_connection(void *arg1, void *arg2) {
-        HTTPServer *server = (HTTPServer*) arg1;
-        uThreads::io::Connection *ccon = (uThreads::io::Connection*)arg2;
-        HTTPSession session(*server, ccon);
-        session.serve();
-        ccon->close();
-        delete ccon;
-    }
+    // Virtual method table look up should not add significant overhead when compared to system calls issued here
+    virtual ssize_t recv(void *buf, size_t len, int flags){};
+    virtual ssize_t send(const void *buf, size_t len, int flags){};
+    virtual int getFD(){};
+    virtual void yield(){};
 
     ~HTTPSession() {}
 };
+
+
 }
 
 #endif //NEWWEBSERVER_HTTPSESSION_H

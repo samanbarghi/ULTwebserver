@@ -7,7 +7,6 @@
 #include "HTTPRequest.h"
 #include "HTTPResponse.h"
 
-std::vector<uThreads::io::Connection*> utserver::UTServer::servers;
 
 const utserver::HTTPResponse utserver::HTTPSession::buildResponse(HTTPRequest &request) {
     utserver::HTTPServer::HTTPRouteFunc func = (this->server.route(std::experimental::string_view(request.path, request.path_len)));
@@ -21,9 +20,10 @@ const utserver::HTTPResponse utserver::HTTPSession::buildResponse(HTTPRequest &r
     }
 }
 void utserver::HTTPSession::serve() {
-    HTTPRequest request(*connection);
-    HTTPOutputStream httpos(*this, *connection);
-    while (request.read()) {
+    HTTPRequest request;
+    HTTPInputStream httpis(*this);
+    HTTPOutputStream httpos(*this);
+    while (httpis.read(request)) {
         switch (request.parse()) {
             case HTTPRequest::ParserResult::Pipelined:
                 buildResponse(request).buildResponse(httpos);

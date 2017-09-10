@@ -6,7 +6,6 @@
 #define NEWWEBSERVER_HTTPRESPONSE_H
 #include "base.h"
 #include "HTTP.h"
-#include "uThreads/uThreads.h"
 #include "HTTPStream.h"
 #include "HTTPSession.h"
 #include "HTTPServer.h"

@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.2)
-SET ( CMAKE_CXX_FLAGS "-std=c++17" )
-project(newwebserver)
+project(utserver VERSION 0.1.0 LANGUAGES CXX)
 
-#set(CMAKE_CXX_STANDARD 1z)
+set(CXX_STANDARD_REQUIRED OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(SOURCE_FILES main.cpp picohttpparser/picohttpparser.c libutserver/utserver/HTTPSession.cpp)
-add_executable(newwebserver ${SOURCE_FILES})
-target_link_libraries(newwebserver uThreads)
+set(LIBUTSERVER_INCLUDE_DIRS
+     "${CMAKE_CURRENT_SOURCE_DIR}/libutserver")
 
+add_subdirectory(libutserver)
+add_subdirectory(servers)
