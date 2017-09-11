@@ -6,6 +6,7 @@
 #define NEWWEBSERVER_HTTPSTREAM_H
 #include "base.h"
 #include <string.h>
+#include <iostream>
 
 namespace utserver{
 class HTTPSession;
@@ -73,7 +74,45 @@ class HTTPOutputStream{
     void reset() {
         output_length = 0;
     }
-    void concat(const std::string& responseStr){
+    void concat_unsigned(uint32_t n){
+		static const uint32_t pow10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+		static const char digits[201] = {
+		"0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+		"5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"
+		};
+		uint32_t t, size, x;
+		int base;
+
+		t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
+		size = t - (n < pow10[t]) + 1;
+
+
+        // if we are going to exceed the buffer, flush the buffer
+        if(unlikely( size > (OUTPUT_BUFFER_LENGTH - output_length)))
+            writeBuffer();
+
+		output_length += size;
+		base = output_length;
+
+		while (n >= 100)
+		{
+			x = (n % 100) << 1;
+			n /= 100;
+			output_buffer[--base] = digits[x + 1];
+			output_buffer[--base]  = digits[x];
+
+		}
+	  	if (n >= 10)
+		{
+			x = n << 1;
+			output_buffer[--base] = digits[x + 1];
+			output_buffer[--base] = digits[x];
+		}
+	  	else
+			output_buffer[--base] = n + '0';
+    }
+
+    void concat(const std::string& responseStr) {
 
         // if we are going to exceed the buffer, flush the buffer
         if(unlikely( responseStr.length() > (OUTPUT_BUFFER_LENGTH - output_length)))
@@ -87,12 +126,30 @@ class HTTPOutputStream{
         output_length += responseStr.length();
     };
 
+    void concat(char* data, size_t size) {
+
+        // if we are going to exceed the buffer, flush the buffer
+        if(unlikely( size > (OUTPUT_BUFFER_LENGTH - output_length)))
+            writeBuffer();
+        // if response length is larger than OUTPUT_BUFFER_LENGTH write directly
+        if(unlikely( size > OUTPUT_BUFFER_LENGTH)){
+            writeSingle(data, size);
+            return;
+        }
+        strncpy(output_buffer + output_length, data, size);
+        output_length += size;
+    };
+
+	bool writeSingle(char* data, size_t size){
+		return write(data, size);
+	}
+
     bool writeSingle(const std::string& response){
         return write(response.c_str(), response.length());
     };
 
     bool writeBuffer(){
-        // std::cout << output_buffer << std::endl;
+//        std::cout << output_buffer << std::endl;
         return write(output_buffer, output_length);
     };
 

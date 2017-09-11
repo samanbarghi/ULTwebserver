@@ -12,6 +12,13 @@
 #include <string>
 
 #define END_OF_RESPONSE_LINE   "\r\n"
+#define HTTP10 "HTTP/1.0 "
+#define HTTP11 "HTTP/1.1 "
+#define SPACE " "
+#define SERVER "Server: "
+#define DATE "Date: "
+#define CONTENTTYPE "Content-type: "
+#define CONTENTLENGTH "Content-length: "
 // To avoid file io, only return a simple HelloWorld!
 
 namespace utserver {
@@ -22,7 +29,7 @@ class HTTPResponse {
     // TODO(Saman): vector seems to be a very slow solution with current implementation. Preallocate? array? is this because memory is allocated on the heap?
     std::vector<HTTPHeaders> headers;
     uint8_t _version;
-    int _status;
+    uint32_t _status;
     std::string _reason;
     std::string _contentType;
 
@@ -39,28 +46,28 @@ class HTTPResponse {
             _status(status), _reason(reason), _version(version), _contentType(contentType), _body(body), headers(){};
  private:
     void buildStatus(HTTPOutputStream& hos) const{
-        hos.concat( _version ? "HTTP/1.1 " : "HTTP/1.0 ");
-        hos.concat(std::to_string(_status));
-        hos.concat(" ");
+        hos.concat( _version ? HTTP11 : HTTP10);
+        hos.concat_unsigned(_status);
+        hos.concat(SPACE);
         hos.concat(_reason);
         hos.concat(END_OF_RESPONSE_LINE);
 
     }
 
     void buildServerName(HTTPOutputStream& hos) const{
-        hos.concat("Server: ");
+        hos.concat(SERVER);
         hos.concat(hos.session.server.name);
         hos.concat(END_OF_RESPONSE_LINE);
     }
 
     void buildDate(HTTPOutputStream& hos) const{
-        hos.concat("Date: ");
+        hos.concat(DATE);
         hos.concat(hos.session.server.date);
         hos.concat(END_OF_RESPONSE_LINE);
     }
 
     void buildContentType(HTTPOutputStream& hos) const{
-        hos.concat("Content-Type: ");
+        hos.concat(CONTENTTYPE);
         hos.concat(_contentType);
         hos.concat(END_OF_RESPONSE_LINE);
     }
@@ -75,8 +82,8 @@ class HTTPResponse {
     }
 
     void buildContentLength(HTTPOutputStream& hos) const{
-        hos.concat("Content-Length: ");
-        hos.concat(std::to_string(_body.length()));
+        hos.concat(CONTENTLENGTH);
+        hos.concat_unsigned(uint32_t(_body.length()));
         hos.concat(END_OF_RESPONSE_LINE);
     }
 
