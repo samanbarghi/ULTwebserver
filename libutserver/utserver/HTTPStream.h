@@ -126,7 +126,7 @@ class HTTPOutputStream{
         output_length += responseStr.length();
     };
 
-    void concat(char* data, size_t size) {
+    void concat(const char* data, const size_t size) {
 
         // if we are going to exceed the buffer, flush the buffer
         if(unlikely( size > (OUTPUT_BUFFER_LENGTH - output_length)))
@@ -140,7 +140,7 @@ class HTTPOutputStream{
         output_length += size;
     };
 
-	bool writeSingle(char* data, size_t size){
+	bool writeSingle(const char* data, const size_t size){
 		return write(data, size);
 	}
 
@@ -153,7 +153,7 @@ class HTTPOutputStream{
         return write(output_buffer, output_length);
     };
 
-    bool write(const char* vptr, size_t length) {
+    bool write(const char* vptr, const size_t length) {
 
         size_t nleft;
         ssize_t nwritten;

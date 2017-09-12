@@ -11,17 +11,17 @@
 #include "HTTPServer.h"
 #include <string>
 
-#define END_OF_RESPONSE_LINE   "\r\n"
-#define HTTP10 "HTTP/1.0 "
-#define HTTP11 "HTTP/1.1 "
-#define SPACE " "
-#define SERVER "Server: "
-#define DATE "Date: "
-#define CONTENTTYPE "Content-type: "
-#define CONTENTLENGTH "Content-length: "
-// To avoid file io, only return a simple HelloWorld!
 
 namespace utserver {
+    static const char END_OF_RESPONSE_LINE[] =    "\r\n";
+    static const char HTTP10[] =  "HTTP/1.0 ";
+    static const char HTTP11[] =  "HTTP/1.1 ";
+    static const char SPACE[] =  " ";
+    static const char SERVER[] =  "Server: ";
+    static const char  DATE[] =  "Date: ";
+    static const char CONTENTTYPE[] = "Content-type: ";
+    static const char CONTENTLENGTH[] = "Content-length: ";
+
 class HTTPResponse {
     friend class HTTPSession;
 
@@ -45,31 +45,32 @@ class HTTPResponse {
     HTTPResponse(uint8_t version, int status, std::string reason, std::string contentType, std::string body):
             _status(status), _reason(reason), _version(version), _contentType(contentType), _body(body), headers(){};
  private:
+
     void buildStatus(HTTPOutputStream& hos) const{
-        hos.concat( _version ? HTTP11 : HTTP10);
+        hos.concat( _version ? HTTP11 : HTTP10, strlen(HTTP11));
         hos.concat_unsigned(_status);
-        hos.concat(SPACE);
+        hos.concat(SPACE, strlen(SPACE));
         hos.concat(_reason);
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
 
     }
 
     void buildServerName(HTTPOutputStream& hos) const{
-        hos.concat(SERVER);
+        hos.concat(SERVER, strlen(SERVER));
         hos.concat(hos.session.server.name);
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
     }
 
     void buildDate(HTTPOutputStream& hos) const{
-        hos.concat(DATE);
-        hos.concat(hos.session.server.date);
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(DATE, strlen(DATE));
+        hos.concat(hos.session.server.date, 32);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
     }
 
     void buildContentType(HTTPOutputStream& hos) const{
-        hos.concat(CONTENTTYPE);
+        hos.concat(CONTENTTYPE, strlen(CONTENTTYPE));
         hos.concat(_contentType);
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
     }
 
     void buildHeaders(HTTPOutputStream& hos) const{
@@ -77,14 +78,14 @@ class HTTPResponse {
             hos.concat(header._name);
             hos.concat(": ");
             hos.concat(header._value);
-            hos.concat(END_OF_RESPONSE_LINE);
+            hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
         }
     }
 
     void buildContentLength(HTTPOutputStream& hos) const{
-        hos.concat(CONTENTLENGTH);
+        hos.concat(CONTENTLENGTH, strlen(CONTENTLENGTH));
         hos.concat_unsigned(uint32_t(_body.length()));
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
     }
 
     void buildResponse(HTTPOutputStream& hos) const{
@@ -95,7 +96,7 @@ class HTTPResponse {
         buildHeaders(hos);
         buildContentLength(hos);
         /* end of headers */
-        hos.concat(END_OF_RESPONSE_LINE);
+        hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
         hos.concat(_body);
     }
 };
