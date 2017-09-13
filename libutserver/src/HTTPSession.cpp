@@ -30,15 +30,8 @@ void utserver::HTTPSession::serve() {
                 break;
             case HTTPRequest::ParserResult::Complete: {
                 const HTTPResponse resp = buildResponse(request);
-                // if buffer contains string, concat and write
-                if (httpos.output_length) {
-                    resp.buildResponse(httpos);
-                    httpos.writeBuffer();
-                } else { // otherwise, write directly
-                    resp.buildResponse(httpos);
-                    httpos.writeBuffer();
-                    //httpos.writeSingle(resp);
-                }
+                resp.buildResponse(httpos);
+                httpos.writeBuffer();
                 request.reset();
                 break;
             }
