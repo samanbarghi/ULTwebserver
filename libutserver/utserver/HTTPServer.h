@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <sys/timerfd.h>
 #include <atomic>
+#include <iostream>
 #include "HTTPSession.h"
 
 namespace utserver {
@@ -53,14 +54,20 @@ class HTTPServer {
     struct sockaddr_in serv_addr; // structure containing an internet address
 
     std::atomic_bool serverStarted;
-    std::unordered_map<std::experimental::string_view, HTTPRouteFunc, std::hash<std::experimental::string_view>> routes;
+    std::unordered_map<std::experimental::string_view, HTTPRouteFunc> routes;
     std::vector<std::string> paths; // holds the path strings for routes
+    std::vector<std::experimental::string_view> pathsView; // holds the path strings for routes
 
     const HTTPRouteFunc route(const std::experimental::string_view& route){
-        return routes[route];
+        auto it = routes.find(route);
+        if(it != routes.end()) {
+            return it->second;
+        }else
+            return nullptr;
     }
  public:
-    HTTPServer(const std::string serverName, int p, size_t tc) : name(serverName), port(p), thread_count(tc), serverStarted(false) {
+    // TODO(saman): inizial size of the vectors should be received from the user? or use array instead?
+    HTTPServer(const std::string serverName, int p, size_t tc) : name(serverName), port(p), thread_count(tc), serverStarted(false), paths(100), pathsView(100) {
 
        bzero((char *) &serv_addr, sizeof(serv_addr));
         serv_addr.sin_family = AF_INET;
@@ -89,8 +96,10 @@ class HTTPServer {
         }
         paths.push_back(route);
         auto it = &paths.back();
-        std::experimental::string_view key(it->c_str(), it->size());
-        return routes.insert({key, func}).second;
+        pathsView.emplace_back(it->c_str(), it->size());
+        auto itv = &pathsView.back();
+        routes.emplace((*it), func);
+        return true;
     }
 };
 
