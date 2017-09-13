@@ -8,6 +8,7 @@
 #include "utserver.h"
 
 namespace uthreadsserver {
+const size_t MAXIMUM_THREADS_PER_CLUSTER = 8;
 // uThreads HTTP Session
 class UTHTTPSession : public utserver::HTTPSession {
  private:

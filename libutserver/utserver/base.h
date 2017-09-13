@@ -7,7 +7,6 @@
 
 #define INPUT_BUFFER_LENGTH 1048 //1 KB
 #define OUTPUT_BUFFER_LENGTH 2048 //2 KB
-#define MAXIMUM_THREADS_PER_CLUSTER 8
 
 #define LOG(msg) puts(msg);
 #define LOGF(fmt, params...) printf(fmt "\n", params);
