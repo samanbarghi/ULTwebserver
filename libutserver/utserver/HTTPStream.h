@@ -34,7 +34,7 @@ class HTTPInputStream{
                 if (unlikely(nrecvd<= 0)) {
                     // connection was closed
                     if (nrecvd == 0)
-                        return 0;
+                        return false;
                     else if(errno != EINTR){
                         //if RST packet by browser, just close the connection
                         //no need to show an error.
