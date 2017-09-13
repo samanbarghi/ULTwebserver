@@ -63,7 +63,7 @@ class HTTPResponse {
 
     void buildDate(HTTPOutputStream& hos) const{
         hos.concat(DATE, strlen(DATE));
-        hos.concat(hos.session.server.date, 32);
+        hos.concat(hos.session.server.date, strlen(hos.session.server.date));
         hos.concat(END_OF_RESPONSE_LINE, strlen(END_OF_RESPONSE_LINE));
     }
 
