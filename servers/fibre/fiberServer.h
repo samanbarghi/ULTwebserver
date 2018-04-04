@@ -6,6 +6,7 @@
 #define NEWWEBSERVER_LIBFIBRESERVER_H
 #include <cassert>
 #include <mutex> // call_once
+#include "testoptions.h"
 #include "libfibre/fibre.h"
 #include "utserver.h"
 
@@ -148,8 +149,7 @@ class FibreServer : public utserver::HTTPServer {
         std::call_once(signalRegisterFlag, signal, SIGINT, FibreServer::intHandler);
 
         // Start the timer to set the server date
-        static const bool background = false;
-        (new Fibre(*cluster[0], defaultStackSize, background))->run(FibreServer::timer, (void *)this);
+        (new Fibre(*cluster[0], defaultStackSize))->run(FibreServer::timer, (void *)this);
     }
 
     ~FibreServer() {
@@ -203,11 +203,11 @@ class FibreServer : public utserver::HTTPServer {
                 acfs[i][j]->run(acceptor, (void*)this);
             }
         }
-        for (int i = 0; i < cluster_count; i++) {
+        /*for (int i = 0; i < cluster_count; i++) {
             for (int j = 0; j < ac_count; j++) {
                 delete acfs[i][j];
             }
-        }
+        }*/
     };
 };
 

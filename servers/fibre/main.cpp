@@ -23,6 +23,8 @@ int main(int argc, char *argv[]) {
     libfibreserver::FibreServer server("u", PORT, thread_count);
     server.registerRoute("/plaintext", helloWorld);
     server.start();
+    int value;
+    std::cin >> value;
 
   return 0;
 
