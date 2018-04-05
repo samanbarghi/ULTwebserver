@@ -6,7 +6,6 @@
 #define NEWWEBSERVER_LIBFIBRESERVER_H
 #include <cassert>
 #include <mutex> // call_once
-#include "testoptions.h"
 #include "libfibre/fibre.h"
 #include "utserver.h"
 
@@ -203,11 +202,12 @@ class FibreServer : public utserver::HTTPServer {
                 acfs[i][j]->run(acceptor, (void*)this);
             }
         }
-        /*for (int i = 0; i < cluster_count; i++) {
+        for (int i = 0; i < cluster_count; i++) {
             for (int j = 0; j < ac_count; j++) {
                 delete acfs[i][j];
             }
-        }*/
+        }
+        SYSCALL(lfClose(serverConnection));
     };
 };
 
