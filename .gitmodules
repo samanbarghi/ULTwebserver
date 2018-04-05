@@ -1,3 +1,9 @@
 [submodule "picohttpparser"]
 	path = picohttpparser
 	url = https://github.com/h2o/picohttpparser
+[submodule "servers/fibre/KOS"]
+	path = servers/fibre/KOS
+	url = https://git.uwaterloo.ca/mkarsten/KOS
+[submodule "servers/uThreads/uThreads"]
+	path = servers/uThreads/uThreads
+	url = https://github.com/samanbarghi/uThreads
