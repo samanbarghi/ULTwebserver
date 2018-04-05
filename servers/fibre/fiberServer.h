@@ -4,8 +4,8 @@
 
 #ifndef NEWWEBSERVER_LIBFIBRESERVER_H
 #define NEWWEBSERVER_LIBFIBRESERVER_H
-#include <cassert>
-#include <mutex> // call_once
+#include <cassert>  // assert
+#include <mutex>    // call_once
 #include "libfibre/fibre.h"
 #include "utserver.h"
 
@@ -49,6 +49,7 @@ class FibreHTTPSession : public utserver::HTTPSession {
         FibreHTTPSession session(*(utserver::HTTPServer*)(sfd->fserver), sfd->connfd);
         session.serve();
         SYSCALL(lfClose(sfd->connfd));
+        delete sfd;
     }
 };
 

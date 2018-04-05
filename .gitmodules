@@ -7,3 +7,6 @@
 [submodule "servers/uThreads/uThreads"]
 	path = servers/uThreads/uThreads
 	url = https://github.com/samanbarghi/uThreads
+[submodule "servers/qthreads/qthreads"]
+	path = servers/qthreads/qthreads
+	url = https://github.com/Qthreads/qthreads
