@@ -37,7 +37,7 @@ class QTHTTPSession : public utserver::HTTPSession {
     };
 
     void yield() {
-        qthread_yield();
+        // qthread_yield();
     };
 
     // Function to handle connections for each http session
@@ -102,6 +102,8 @@ class QTServer : public utserver::HTTPServer {
 
         sheppard_count = (thread_count / (MAXIMUM_THREADS_PER_SHEPPARD + 1)) + 1;
 
+        setenv("QTHREAD_STACK_SIZE", "65536", 1);
+
         //Create qt_workers
         qthread_init(thread_count);
 
@@ -115,6 +117,7 @@ class QTServer : public utserver::HTTPServer {
 
     ~QTServer() {
         close(serverConnection);
+        qthread_finalize();
     }
 
     void start() {
@@ -154,6 +157,7 @@ class QTServer : public utserver::HTTPServer {
         }
 
         close(serverConnection);
+        qthread_finalize();
     };
 };
 
