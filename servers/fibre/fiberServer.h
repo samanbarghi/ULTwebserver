@@ -134,7 +134,7 @@ class FibreServer : public utserver::HTTPServer {
                 SYSCALL(pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask));
 #if TESTING_POLLER_THREADS
                 if (sproc_idx % cluster_size == 0) {
-          tid = cluster[cluster_idx].getPoller().getSysID();
+          tid = cluster[cluster_idx]->getPoller().getSysID();
           CPU_ZERO( &mask );
           for (int i = 0; i < cluster_size; i += 1) {
               if (sproc_idx + i < thread_count) CPU_SET( cpubase + sproc_idx + i, &mask );
