@@ -6,7 +6,6 @@
 #define NEWWEBSERVER_HTTPREQUEST_H
 #include "base.h"
 #include "strings.h"
-#include <experimental/string_view>
 #include "../../picohttpparser/picohttpparser.h"
 
 namespace utserver {
@@ -72,12 +71,12 @@ class HTTPRequest {
         return minor_version;
     }
 
-    const std::experimental::string_view getMethod() const {
-        return std::experimental::string_view(method, method_len);
+    const string_buffer getMethod() const {
+        return string_buffer(method, method_len);
     }
 
-    const std::experimental::string_view getPath() const{
-        return std::experimental::string_view(path, path_len);
+    const string_buffer getPath() const{
+        return string_buffer(path, path_len);
     }
 
     // TODO: wrap headers in string_view and return them

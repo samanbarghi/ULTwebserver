@@ -4,6 +4,7 @@
 
 #ifndef NEWWEBSERVER_BASE_H
 #define NEWWEBSERVER_BASE_H
+#include <string.h>
 
 #define INPUT_BUFFER_LENGTH 1048 //1 KB
 #define OUTPUT_BUFFER_LENGTH 2048 //2 KB
@@ -26,5 +27,21 @@
                             " </body>\n" \
                             "</html>\n"
 
+struct string_buffer{
+    int length;
+    char* buffer;
+    string_buffer(char* buffer, int length): buffer(buffer), length(length){};
+    string_buffer(const char* buffer, int length): buffer(const_cast<char*>(buffer)), length(length){};
+    string_buffer():buffer(nullptr), length(0){};
+
+    bool operator ==(const string_buffer &b) const{
+        if(length == b.length) {
+            if(strncmp(buffer, b.buffer, length) == 0){
+                return true;
+            }
+        }
+    }
+
+};
 
 #endif //NEWWEBSERVER_BASE_H

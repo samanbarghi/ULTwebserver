@@ -9,7 +9,7 @@
 
 
 const utserver::HTTPResponse utserver::HTTPSession::buildResponse(HTTPRequest &request) {
-    utserver::HTTPServer::HTTPRouteFunc func = (this->server.route(std::experimental::string_view(request.path, request.path_len)));
+    utserver::HTTPServer::HTTPRouteFunc func = (this->server.route(string_buffer(request.path, request.path_len)));
     if(func){
         const HTTPResponse response = (func(request));
         return response;

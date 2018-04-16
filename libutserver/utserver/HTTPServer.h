@@ -4,10 +4,8 @@
 
 #ifndef NEWWEBSERVER_HTTPSERVER_H
 #define NEWWEBSERVER_HTTPSERVER_H
-
 #include <netinet/in.h>
 #include <strings.h>
-#include <experimental/string_view>
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
@@ -54,16 +52,16 @@ class HTTPServer {
     struct sockaddr_in serv_addr; // structure containing an internet address
 
     std::atomic_bool serverStarted;
-    std::unordered_map<std::experimental::string_view, HTTPRouteFunc> routes;
+    // TODO: This should change to a map for larger servers. For now
+    // string_view does not work with uC++ so we change it to a vector
+    std::vector<std::pair<string_buffer, HTTPRouteFunc>> routes;
     std::vector<std::string> paths; // holds the path strings for routes
-    std::vector<std::experimental::string_view> pathsView; // holds the path strings for routes
+    std::vector<string_buffer> pathsView; // holds the path strings for routes
 
-    const HTTPRouteFunc route(const std::experimental::string_view& route){
-        auto it = routes.find(route);
-        if(it != routes.end()) {
-            return it->second;
-        }else
-            return nullptr;
+    const HTTPRouteFunc route(const string_buffer route){
+        for(auto p : routes)
+            if(p.first == route) return p.second;
+        return nullptr;
     }
  public:
     // TODO(saman): inizial size of the vectors should be received from the user? or use array instead?
@@ -98,7 +96,7 @@ class HTTPServer {
         auto it = &paths.back();
         pathsView.emplace_back(it->c_str(), it->size());
         auto itv = &pathsView.back();
-        routes.emplace((*it), func);
+        routes.emplace_back(std::make_pair(*itv, func));
         return true;
     }
 };
