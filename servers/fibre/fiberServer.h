@@ -39,7 +39,8 @@ class FibreHTTPSession : public utserver::HTTPSession {
     };
 
     void yield() {
-        Fibre::yield();
+        // Libfibre yields internally
+        //Fibre::yield();
     };
 
     // Function to handle connections for each http session
@@ -132,7 +133,7 @@ class FibreServer : public utserver::HTTPServer {
                 CPU_ZERO( &mask );
                 CPU_SET( cpubase + sproc_idx, &mask );
                 SYSCALL(pthread_setaffinity_np(tid, sizeof(cpu_set_t), &mask));
-#if TESTING_POLLER_THREADS
+#if !TESTING_POLLER_FIBRES
                 if (sproc_idx % cluster_size == 0) {
           tid = cluster[cluster_idx]->getPoller().getSysID();
           CPU_ZERO( &mask );
