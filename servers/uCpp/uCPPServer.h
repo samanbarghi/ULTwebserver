@@ -89,7 +89,18 @@ class UCPPHTTPSession : public utserver::HTTPSession {
     UCPPHTTPSession(utserver::HTTPServer &s, Acceptor *c) : HTTPSession(s), connection(c) {};
 
     ssize_t recv(void *buf, size_t len, int flags) {
-        return connection->acceptor.recv((char*)buf, len, flags);
+	ssize_t rlen;
+	try {
+		rlen = connection->acceptor.recv((char*)buf, len, flags);
+    } catch( uSocketAccept::ReadFailure & rderr ) {
+		int terrno = rderr.errNo();
+		if ( terrno != EPIPE && terrno != ECONNRESET ) {
+			std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
+			exit( EXIT_FAILURE );
+	} // if
+	    rlen = -1;				// rlen not set for exception
+    } // try
+        return rlen;
     };
 
     ssize_t send(const void *buf, size_t len, int flags) {
