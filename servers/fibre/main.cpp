@@ -13,14 +13,15 @@ const HTTPResponse helloWorld(const HTTPRequest& request){
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 2) {
-        printf("USAGE: %s NUMBER_OF_THREADS\n", argv[0]);
+    if (argc != 3) {
+        printf("USAGE: %s NUMBER_OF_THREADS CPU_BASE\n", argv[0]);
         return 0;
     }
     //set total number of worker threads
     size_t thread_count = atoi(argv[1]);
+    int cpubase = atoi(argv[2]);
 
-    libfibreserver::FibreServer server("u", PORT, thread_count);
+    libfibreserver::FibreServer server("u", PORT, thread_count, cpubase);
     server.registerRoute("/plaintext", helloWorld);
     server.start();
 
