@@ -11,7 +11,7 @@ const HTTPResponse helloWorld(const HTTPRequest& request){
 
 void uMain::main() {
 
-    if (argc != 2) {
+    if (argc < 2) {
         printf("USAGE: %s NUMBER_OF_THREADS\n", argv[0]);
         return;
     }
