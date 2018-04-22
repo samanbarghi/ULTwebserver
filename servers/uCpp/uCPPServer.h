@@ -98,7 +98,8 @@ class UCPPHTTPSession : public utserver::HTTPSession {
 			std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
 			exit( EXIT_FAILURE );
 	} // if
-	    rlen = -1;				// rlen not set for exception
+        // if we are here it means the connection is closed
+	  rlen = 0;				// rlen not set for exception
     } // try
         return rlen;
     };
