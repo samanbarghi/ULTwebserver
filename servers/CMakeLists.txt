@@ -1,5 +1,9 @@
 set(CMAKE_CXX_FLAGS "-std=c++14")
 
+
+#adding pthreads
+add_subdirectory(pthreads)
+
 #adding libfibre if gitsubmodule exists
 set(FIBREDIR ${CMAKE_CURRENT_SOURCE_DIR}/fibre/KOS/src/libfibre)
 if(EXISTS ${FIBREDIR})
