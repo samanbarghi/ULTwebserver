@@ -7,4 +7,5 @@
 #include "utserver/HTTPServer.h"
 #include "utserver/HTTPRequest.h"
 #include "utserver/HTTPResponse.h"
+#include "utserver/ThreadPool.h"
 #endif //NEWWEBSERVER_UTSERVER_H

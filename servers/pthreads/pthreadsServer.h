@@ -11,6 +11,84 @@
 #include "utserver.h"
 
 namespace pthreadsserver {
+const int defaultStackSize = 16 * 1024; // 16KB
+
+// handle errors from pthread functions
+void handle_error(const std::string&& msg){
+        LOG_ERROR(msg.c_str());
+        exit(1);
+}
+
+// set pthread attribute for all threads
+void setPthreadAttr(pthread_attr_t& attr){
+    int s = pthread_attr_init(&attr);
+    if (s != 0) handle_error("pthread_attr_init");
+
+    s = pthread_attr_setstacksize(&attr, defaultStackSize);
+    if (s != 0) handle_error("pthread_attr_setstacksize");
+}
+
+class Lock{
+ public:
+    pthread_mutex_t mutex;
+    Lock() {
+        if (pthread_mutex_init(&mutex, nullptr) != 0) handle_error("pthread_mutex_init");
+    }
+    void lock(){
+       pthread_mutex_lock(&mutex);
+    }
+    void unlock(){
+        pthread_mutex_unlock(&mutex);
+    }
+    ~Lock(){
+        pthread_mutex_destroy(&mutex);
+    }
+};
+class CV{
+ private:
+    pthread_cond_t cv;
+    Lock& lock;
+ public:
+    CV(Lock& lock): lock(lock){
+        if(pthread_cond_init(&cv, nullptr)) handle_error("pthread_cond_init");
+    }
+    void signal(){
+        pthread_cond_signal(&cv);
+    }
+    void wait(){
+        pthread_cond_wait(&cv, &lock.mutex);
+    }
+    void broadcast(){
+        pthread_cond_broadcast(&cv);
+    }
+    ~CV(){
+        pthread_cond_destroy(&cv);
+    }
+};
+
+class PthreadPool : public utserver::ThreadPool<Lock, CV> {
+ private:
+
+    void create_thread(){
+        pthread_attr_t attr;
+        setPthreadAttr(attr);
+        pthread_t thread;
+        int s = pthread_create(&thread, &attr, utserver::ThreadPool<Lock, CV>::run, (void*)this);
+        pthread_detach(thread);
+        if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
+    }
+ public:
+    PthreadPool(){};
+    PthreadPool(size_t init_size){
+        for(size_t i =0 ; i < init_size; ++i){
+            create_thread();
+        }
+    };
+
+    ~PthreadPool(){
+    }
+};
+
 class PthreadServer;
 // to pass to handle_connection
 struct ServerAndFd {
@@ -57,12 +135,12 @@ class PthreadServer : public utserver::HTTPServer {
  protected:
     int server_conn_fd;
     std::once_flag signalRegisterFlag;
-    const int defaultStackSize = 16 * 1024; // 16KB
 	std::vector<pthread_t> pthreads;
 	// pthread that runs the timer
 	pthread_t timer_pthread;
 
     static std::vector<int> servers;
+    PthreadPool pool;
 
     static void intHandler(int signal) {
         for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
@@ -102,21 +180,10 @@ class PthreadServer : public utserver::HTTPServer {
 
     }
 
-	void handle_error(const std::string&& msg){
-		   	LOG_ERROR(msg.c_str());
-			exit(1);
-	}
-
-	void setPthreadAttr(pthread_attr_t& attr){
-		int s = pthread_attr_init(&attr);
-		if (s != 0) handle_error("pthread_attr_init");
-
-		s = pthread_attr_setstacksize(&attr, defaultStackSize);
-		if (s != 0) handle_error("pthread_attr_setstacksize");
-	}
  public:
 	// threadcount here is used to determine the number of cores available
-    PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount){
+    PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount),
+                                                                                 pool(utserver::ThreadPool<Lock,CV>::defaultPoolSize){
         // handle SIGINT to close the main socket
         std::call_once(signalRegisterFlag, signal, SIGINT, PthreadServer::intHandler);
 
@@ -145,12 +212,8 @@ class PthreadServer : public utserver::HTTPServer {
 
         while (true) {
             int conn_fd = ::accept4(server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
-            pthread_attr_t attr;
-            setPthreadAttr(attr);
-            pthread_t thread;
-            int s = pthread_create(&thread, &attr, PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(this, conn_fd));
-            pthread_detach(thread);
-            if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
+            pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(this, conn_fd));
+
         }
     };
 };
