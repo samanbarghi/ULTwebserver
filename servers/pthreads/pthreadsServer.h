@@ -37,6 +37,9 @@ class Lock{
     void lock(){
        pthread_mutex_lock(&mutex);
     }
+    int trylock(){
+        return pthread_mutex_trylock(&mutex);
+    }
     void unlock(){
         pthread_mutex_unlock(&mutex);
     }
@@ -214,7 +217,6 @@ class PthreadServer : public utserver::HTTPServer {
         while (true) {
             int conn_fd = ::accept4(server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
             pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(this, conn_fd));
-
         }
     };
 };

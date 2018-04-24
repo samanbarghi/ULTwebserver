@@ -9,7 +9,13 @@ namespace utserver{
 
 template<typename Lock, typename CV>
 class ThreadPool {
-    using PoolFuncArg = std::tuple<ThreadPool*, void*(*)(void*), void*>;
+    struct PoolFuncArg {
+        ThreadPool<Lock, CV>* pool;
+        void*(*func)(void*) ;
+        void* arg;
+        PoolFuncArg(ThreadPool<Lock, CV>* pool, void*(*func)(void*), void* arg):
+            pool(pool), func(func), arg(arg){};
+    };
  private:
     Lock mutex;
     // stack for threads
@@ -60,20 +66,20 @@ class ThreadPool {
     // create_thread should call this function and pass along a pointer to the pool
     static void* run(void* arg){
         PoolFuncArg* pfa = (PoolFuncArg*) arg;
-        ThreadPool<Lock, CV>* pool = std::get<0>(*pfa);
+        ThreadPool<Lock, CV>* pool = pfa->pool;
         ThreadPool<Lock, CV>::StackNode work(pfa, pool->mutex);
 
         while(true){
             if(pool->terminate) return nullptr;
-            std::get<1>(*pfa)(std::get<2>(*pfa));
+            pfa->func(pfa->arg);
 
             // set this for condition_variable
-            std::get<2>(*pfa) = nullptr;
+            pfa->arg = nullptr;
             pool->mutex.lock();
             pool->stack.push(&work);
 
             // if job is placed, the item should be popped from the stack
-            while(std::get<2>(*pfa) == nullptr && !pool->terminate){
+            while(pfa->arg == nullptr && !pool->terminate){
                 work.cv.wait();
             }
 
@@ -83,7 +89,12 @@ class ThreadPool {
 
     // returns whether there were any threads that could run the
     void start( void*(*func)(void*), void* arg){
-        mutex.lock();
+        if(mutex.trylock() != 0){
+            // this is deleted by the thread
+            PoolFuncArg* pfa = new PoolFuncArg(this, func, arg);
+            create_thread((void*)pfa);
+            return;
+        }
         // if stack is empty, create a thread and return
         if(stack.empty()){
             mutex.unlock();
@@ -95,8 +106,8 @@ class ThreadPool {
         // otherwise signal an existing thread
         auto node = stack.front();
         stack.pop();
-        std::get<1>(*node->item) = func;
-        std::get<2>(*node->item) = arg;
+        node->item->func = func;
+        node->item->arg = arg;
 
         node->cv.signal();
         mutex.unlock();
