@@ -18,6 +18,44 @@ struct ServerAndFd {
     int          connfd;
     ServerAndFd(FibreServer* fs, int fd): fserver(fs), connfd(fd){};
 };
+class Lock{
+
+};
+
+class CV{
+ public:
+    CV(Lock& lock){}
+
+};
+
+class FibrePool: public utserver::ThreadPool<Lock, CV> {
+ private:
+    void lock(){
+    }
+    void unlock(){
+    }
+    void cv_signal(){
+    }
+    void cv_wait(){
+    }
+    void cv_broadcast(){
+    }
+    void create_thread(void*){
+       // pthread_create(&thread, &attr, utserver::ThreadPool::run, (void*)this);
+    }
+ public:
+    FibrePool(){
+    };
+    FibrePool(size_t init_size){
+        for(size_t i =0 ; i < init_size; ++i){
+            // create_thread();
+        }
+    };
+
+    ~FibrePool(){
+    }
+};
+
 // fibre HTTP Session
 class FibreHTTPSession : public utserver::HTTPSession {
  private:

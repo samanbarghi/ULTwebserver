@@ -69,11 +69,11 @@ class CV{
 class PthreadPool : public utserver::ThreadPool<Lock, CV> {
  private:
 
-    void create_thread(){
+    void create_thread(void* arg){
         pthread_attr_t attr;
         setPthreadAttr(attr);
         pthread_t thread;
-        int s = pthread_create(&thread, &attr, utserver::ThreadPool<Lock, CV>::run, (void*)this);
+        int s = pthread_create(&thread, &attr, utserver::ThreadPool<Lock, CV>::run, arg);
         pthread_detach(thread);
         if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
     }
@@ -81,7 +81,7 @@ class PthreadPool : public utserver::ThreadPool<Lock, CV> {
     PthreadPool(){};
     PthreadPool(size_t init_size){
         for(size_t i =0 ; i < init_size; ++i){
-            create_thread();
+            //create_thread();
         }
     };
 
@@ -146,6 +146,7 @@ class PthreadServer : public utserver::HTTPServer {
         for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
             ::close(*it);
             PthreadServer::servers.erase(it);
+            // Also stop thread pool
         }
         exit(1);
     };

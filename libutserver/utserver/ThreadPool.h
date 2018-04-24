@@ -6,58 +6,99 @@
 #define UTSERVER_THREADPOOL_H
 #include <queue>
 namespace utserver{
-using Work = std::pair<void*(*)(void*), void*>;
+
 template<typename Lock, typename CV>
 class ThreadPool {
- protected:
+    using PoolFuncArg = std::tuple<ThreadPool*, void*(*)(void*), void*>;
+ private:
     Lock mutex;
-    CV  cv;
-    virtual void create_thread() = 0;
+    // stack for threads
+    class StackNode{
+        friend ThreadPool<Lock, CV>;
+        private:
+            CV  cv;
+            StackNode* next;
+            PoolFuncArg* item;
+     public:
+        explicit StackNode(PoolFuncArg* pfa, Lock& lock):item(pfa), cv(lock), next(nullptr){};
+        ~StackNode(){
+            delete item;
+        }
+    };
 
+    class Stack{
+     private:
+        StackNode* head;
+     public:
+        Stack():head(nullptr){};
+        bool empty() { return head == nullptr;}
+        StackNode* front(){ return head;};
+        void pop() {
+            if (!empty()) {
+                StackNode* tmp = head;
+                head = head->next;
+                tmp->next = nullptr;
+            }
+        }
+        void push(StackNode* item){
+            item->next = head;
+            head = item;
+        }
+    };
 
+ protected:
+    virtual void create_thread(void*) = 0;
+
+    Stack stack;
     // Number of threads currently in the pool
-    size_t size;
     bool terminate;
 
-    std::queue<Work> workQueue;
-
  public:
-    //default size
+    ThreadPool(): terminate(false){};
+
     static constexpr size_t defaultPoolSize = 1024;
-
-    ThreadPool(): size(0), terminate(false), cv(mutex){};
-
     // create_thread should call this function and pass along a pointer to the pool
     static void* run(void* arg){
-        ThreadPool<Lock, CV>* pool = (ThreadPool<Lock, CV>*) arg;
+        PoolFuncArg* pfa = (PoolFuncArg*) arg;
+        ThreadPool<Lock, CV>* pool = std::get<0>(*pfa);
+        ThreadPool<Lock, CV>::StackNode work(pfa, pool->mutex);
+
         while(true){
-            pool->mutex.lock();
-            ++pool->size;
-            while(pool->workQueue.empty() && !pool->terminate){
-                pool->cv.wait();
-            }
             if(pool->terminate) return nullptr;
-            --pool->size;
-            Work work = pool->workQueue.front();
-            pool->workQueue.pop();
+            std::get<1>(*pfa)(std::get<2>(*pfa));
+
+            // set this for condition_variable
+            std::get<2>(*pfa) = nullptr;
+            pool->mutex.lock();
+            pool->stack.push(&work);
+
+            // if job is placed, the item should be popped from the stack
+            while(std::get<2>(*pfa) == nullptr && !pool->terminate){
+                work.cv.wait();
+            }
+
             pool->mutex.unlock();
-            work.first(work.second);
         };
     };
 
     // returns whether there were any threads that could run the
     void start( void*(*func)(void*), void* arg){
         mutex.lock();
-        workQueue.push(std::make_pair(func, arg));
-
-        // a new thread needs to be created
-        if(size ==0){
+        // if stack is empty, create a thread and return
+        if(stack.empty()){
             mutex.unlock();
-            create_thread();
+            // this is deleted by the thread
+            PoolFuncArg* pfa = new PoolFuncArg(this, func, arg);
+            create_thread((void*)pfa);
             return;
         }
         // otherwise signal an existing thread
-        cv.signal();
+        auto node = stack.front();
+        stack.pop();
+        std::get<1>(*node->item) = func;
+        std::get<2>(*node->item) = arg;
+
+        node->cv.signal();
         mutex.unlock();
         return;
     }
@@ -65,7 +106,10 @@ class ThreadPool {
     void stop(){
         mutex.lock();
         terminate = true;
-        cv.broadcast();
+        while(!stack.empty()){
+            stack.front()->cv.signal();
+            stack.pop();
+        }
         mutex.unlock();
     };
 };
