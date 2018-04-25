@@ -4,7 +4,6 @@ using namespace utserver;
 
 #define PORT 8800
 std::vector<int> libfibreserver::FibreServer::servers;
-StackPool* libfibreserver::FibreServer::pool = new StackPool(defaultStackSize);
 
 const HTTPResponse helloWorld(const HTTPRequest& request){
     const HTTPResponse response(1, 200, "OK", "text/plain", "Hello, World!");

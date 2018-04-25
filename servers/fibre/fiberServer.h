@@ -104,7 +104,6 @@ class FibreServer : public utserver::HTTPServer {
     int serverConnection; // Server Connection
 
     static std::vector<int> servers;
-    static StackPool* pool;
     std::once_flag signalRegisterFlag;
 
     static void intHandler(int signal) {
@@ -197,12 +196,13 @@ class FibreServer : public utserver::HTTPServer {
 
     static void acceptor(void* arg) {
         FibreServer* fserver = (FibreServer*) arg;
+        StackPool pool(defaultStackSize);
         struct sockaddr_in serv_addr;
         while(true){
             socklen_t addrlen = sizeof(serv_addr);
             int* fd = (int*)(malloc(sizeof(int)));
             *fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
-            if (*fd >= 0) (new Fibre(*pool))->run(FibreHTTPSession::handle_connection, (void*)new ServerAndFd(fserver, *fd));
+            if (*fd >= 0) (new Fibre(pool))->run(FibreHTTPSession::handle_connection, (void*)new ServerAndFd(fserver, *fd));
             else {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
