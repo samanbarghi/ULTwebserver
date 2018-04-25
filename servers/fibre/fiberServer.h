@@ -19,29 +19,51 @@ struct ServerAndFd {
     ServerAndFd(FibreServer* fs, int fd): fserver(fs), connfd(fd){};
 };
 class Lock{
-
+public:
+    Mutex<SystemLock> mutex;
+    void lock(){
+    	mutex.acquire();
+	}
+	bool trylock(){
+		return mutex.tryAcquire();
+	}
+    void unlock(){
+		mutex.release();
+    }
 };
 
 class CV{
  public:
-    CV(Lock& lock){}
+    Condition<Mutex<SystemLock>> cv;
+    Lock& lock;
+ public:
+    CV(Lock& lock):lock(lock){}
+
+    void signal(){
+        cv.signal();
+	}
+    void wait(){
+        cv.wait(lock.mutex);
+		// libfibre does not acquire the lock after
+		// cv_wait
+		lock.lock();
+	}
+    void broadcast(){
+		cv.signal<true>();
+    }
 
 };
 
+// use the default stackPool for libfibre
 class FibrePool: public utserver::ThreadPool<Lock, CV> {
  private:
-    void lock(){
-    }
-    void unlock(){
-    }
-    void cv_signal(){
-    }
-    void cv_wait(){
-    }
-    void cv_broadcast(){
-    }
-    void create_thread(void*){
-       // pthread_create(&thread, &attr, utserver::ThreadPool::run, (void*)this);
+	// wrapper around run, requires void
+	static void run(void* arg){
+		utserver::ThreadPool<Lock, CV>::run(arg);
+	}
+    void create_thread(void* arg){
+		// create a fibre on the current cluster
+        (new Fibre())->run(FibrePool::run, arg);
     }
  public:
     FibrePool(){
@@ -51,7 +73,6 @@ class FibrePool: public utserver::ThreadPool<Lock, CV> {
             // create_thread();
         }
     };
-
     ~FibrePool(){
     }
 };
@@ -194,21 +215,28 @@ class FibreServer : public utserver::HTTPServer {
         SYSCALL(lfClose(serverConnection));
     }
 
+	// wrapper to pass to pool
+	static void* handle_connection(void* arg){
+		FibreHTTPSession::handle_connection(arg);
+	}
     static void acceptor(void* arg) {
         FibreServer* fserver = (FibreServer*) arg;
-        StackPool pool(defaultStackSize);
+        // StackPool pool(defaultStackSize);
+		FibrePool pool;
         struct sockaddr_in serv_addr;
         while(true){
             socklen_t addrlen = sizeof(serv_addr);
             int* fd = (int*)(malloc(sizeof(int)));
             *fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
-            if (*fd >= 0) (new Fibre(pool))->run(FibreHTTPSession::handle_connection, (void*)new ServerAndFd(fserver, *fd));
+            if (*fd >= 0)
+                pool.start(FibreServer::handle_connection, (void*) new ServerAndFd(fserver, *fd));
             else {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
             }
         }
     }
+
     void start() {
         serverStarted.store(true);
 
