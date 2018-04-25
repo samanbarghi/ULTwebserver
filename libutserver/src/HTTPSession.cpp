@@ -42,5 +42,14 @@ void utserver::HTTPSession::serve() {
                 // keep reading
                 break;
         };
+        // if connection close is sent, close the connection
+        for(int i = 0 ; i < request.num_headers; ++i){
+            auto header = request.headers[i];
+            if(strncasecmp(header.name, "connection", header.name_len) == 0)
+                if(strncasecmp(header.value, "close", header.value_len) == 0) {
+                    return;
+                }
+        }
+
     }
 }

@@ -27,7 +27,7 @@ class HTTPResponse {
 
  public:
     // TODO(Saman): vector seems to be a very slow solution with current implementation. Preallocate? array? is this because memory is allocated on the heap?
-    std::vector<HTTPHeaders> headers;
+    std::vector<HTTPHeader> headers;
     uint8_t _version;
     uint32_t _status;
     std::string _reason;
@@ -44,6 +44,10 @@ class HTTPResponse {
     HTTPResponse(uint8_t version, int status, std::string reason, std::string body):_status(status), _reason(reason), _version(version), _contentType("text/html"), _body(body), headers(){};*/
     HTTPResponse(uint8_t version, int status, std::string reason, std::string contentType, std::string body):
             _status(status), _reason(reason), _version(version), _contentType(contentType), _body(body), headers(){};
+
+    void addHeader(HTTPHeader&& header){
+        headers.push_back(header);
+    }
  private:
 
     void buildStatus(HTTPOutputStream& hos) const{

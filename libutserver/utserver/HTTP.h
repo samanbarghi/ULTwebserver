@@ -5,11 +5,11 @@
 #ifndef NEWWEBSERVER_HTTP_H
 #define NEWWEBSERVER_HTTP_H
 namespace utserver{
-struct HTTPHeaders{
+struct HTTPHeader{
     std::string _name;
     std::string _value;
 
-    HTTPHeaders(std::string name, std::string value): _name(name), _value(value){};
+    HTTPHeader(std::string name, std::string value): _name(name), _value(value){};
 };
 }
 #endif //NEWWEBSERVER_HTTP_H
