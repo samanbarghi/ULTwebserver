@@ -235,6 +235,7 @@ class FibreServer : public utserver::HTTPServer {
                 std::cout << "ECONNRESET" << std::endl;
             }
         }
+        pool.stop();
     }
 
     void start() {

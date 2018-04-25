@@ -199,8 +199,8 @@ class PthreadServer : public utserver::HTTPServer {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
             }
-
         }
+        pool.stop();
     }
  public:
 	// threadcount here is used to determine the number of cores available
