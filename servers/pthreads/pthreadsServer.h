@@ -7,7 +7,9 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <mutex>
+#include <mutex>    // call_once
+#include <cassert>  // assert
+#include <cmath>    // ceil
 #include "utserver.h"
 
 namespace pthreadsserver {
@@ -142,8 +144,10 @@ class PthreadServer : public utserver::HTTPServer {
 	// pthread that runs the timer
 	pthread_t timer_pthread;
 
+    // determines the number of acceptor threads per core
+    static const int core_per_acceptor = 2;
+
     static std::vector<int> servers;
-    PthreadPool pool;
 
     static void intHandler(int signal) {
         for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
@@ -184,10 +188,23 @@ class PthreadServer : public utserver::HTTPServer {
 
     }
 
+    static void* acceptor(void* arg){
+        PthreadServer* pserver = (PthreadServer*) arg;
+        PthreadPool pool(utserver::ThreadPool<Lock,CV>::defaultPoolSize);
+        while (true) {
+            int conn_fd = ::accept4(pserver->server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
+            if(conn_fd >=0){
+                pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(pserver, conn_fd));
+            }else{
+                assert(errno == ECONNRESET);
+                std::cout << "ECONNRESET" << std::endl;
+            }
+
+        }
+    }
  public:
 	// threadcount here is used to determine the number of cores available
-    PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount),
-                                                                                 pool(utserver::ThreadPool<Lock,CV>::defaultPoolSize){
+    PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount){
         // handle SIGINT to close the main socket
         std::call_once(signalRegisterFlag, signal, SIGINT, PthreadServer::intHandler);
 
@@ -201,7 +218,6 @@ class PthreadServer : public utserver::HTTPServer {
 
     ~PthreadServer() {
 		::close(server_conn_fd);
-        //for (uThreads::runtime::kThread *kt: kThreads) delete kt;
     }
 
     void start() {
@@ -214,10 +230,23 @@ class PthreadServer : public utserver::HTTPServer {
         servers.push_back(server_conn_fd);
         ::listen(server_conn_fd, 65535);
 
-        while (true) {
-            int conn_fd = ::accept4(server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
-            pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(this, conn_fd));
+
+        // thread_count represents the number of cores
+        static const int ac_count = ceil(thread_count/core_per_acceptor);
+        pthread_t ac_threads[ac_count];
+        for (int i = 0; i < ac_count; ++i){
+            pthread_attr_t attr;
+            setPthreadAttr(attr);
+            int s = pthread_create(&ac_threads[i], &attr, PthreadServer::acceptor, (void *) this);
+            if(s != 0) handle_error("pthread_create");
+            if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
         }
+
+        // wait for pthreads to join
+        for(auto pt : ac_threads){
+            (void) pthread_join(pt, nullptr);
+        }
+
     };
 };
 
