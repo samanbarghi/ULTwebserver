@@ -89,12 +89,13 @@ class ThreadPool {
 
     // returns whether there were any threads that could run the
     void start( void*(*func)(void*), void* arg){
-        if(mutex.trylock() != 0){
+/*        if(mutex.trylock() != 0){
             // this is deleted by the thread
             PoolFuncArg* pfa = new PoolFuncArg(this, func, arg);
             create_thread((void*)pfa);
             return;
-        }
+        }*/
+        mutex.lock();
         // if stack is empty, create a thread and return
         if(stack.empty()){
             mutex.unlock();
