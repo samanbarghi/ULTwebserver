@@ -153,6 +153,7 @@ class PthreadServer : public utserver::HTTPServer {
             ::close(*it);
             PthreadServer::servers.erase(it);
         }
+        exit(0);
     };
 
     static void* timer(void* vhttpserver) {
@@ -228,6 +229,8 @@ class PthreadServer : public utserver::HTTPServer {
     void start() {
         serverStarted.store(true);
         server_conn_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+         int on = 1;
+         setsockopt(server_conn_fd, SOL_SOCKET, SO_REUSEADDR, (const void*)&on, sizeof(int));
 
         if (bind(server_conn_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
             handle_error("Error on binding");
