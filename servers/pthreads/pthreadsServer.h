@@ -7,7 +7,6 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <mutex>    // call_once
 #include <cassert>  // assert
 #include <cmath>    // ceil
 #include "utserver.h"
@@ -139,7 +138,6 @@ class PthreadHTTPSession : public utserver::HTTPSession {
 class PthreadServer : public utserver::HTTPServer {
  protected:
     int server_conn_fd;
-    std::once_flag signalRegisterFlag;
 	std::vector<pthread_t> pthreads;
 	// pthread that runs the timer
 	pthread_t timer_pthread;
@@ -150,12 +148,11 @@ class PthreadServer : public utserver::HTTPServer {
     static std::vector<int> servers;
 
     static void intHandler(int signal) {
+        PthreadServer::stop = true;
         for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
             ::close(*it);
             PthreadServer::servers.erase(it);
-            // Also stop thread pool
         }
-        exit(1);
     };
 
     static void* timer(void* vhttpserver) {
@@ -185,18 +182,16 @@ class PthreadServer : public utserver::HTTPServer {
                 HTTPServer::setDate(httpserver);
             } // TODO(saman): else throw an error
         }
-
     }
 
     static void* acceptor(void* arg){
         PthreadServer* pserver = (PthreadServer*) arg;
         PthreadPool pool(utserver::ThreadPool<Lock,CV>::defaultPoolSize);
-        while (true) {
+        while (!PthreadServer::stop) {
             int conn_fd = ::accept4(pserver->server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
             if(conn_fd >=0){
                 pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(pserver, conn_fd));
             }else{
-                std::cout << errno << std::endl;
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
             }
@@ -204,10 +199,19 @@ class PthreadServer : public utserver::HTTPServer {
         pool.stop();
     }
  public:
+    static std::atomic_bool stop;
 	// threadcount here is used to determine the number of cores available
     PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount){
         // handle SIGINT to close the main socket
-        std::call_once(signalRegisterFlag, signal, SIGINT, PthreadServer::intHandler);
+        struct sigaction sa;
+        sa.sa_handler = &PthreadServer::intHandler;
+        // Restart the system call, if at all possible
+        sa.sa_flags = SA_RESTART;
+        // Block every signal during the handler
+        sigfillset(&sa.sa_mask);
+        if (sigaction(SIGINT, &sa, NULL) == -1) {
+            perror("Error: cannot handle SIGINT");
+        }
 
         // Start the timer to set the server date
         pthread_attr_t attr;
@@ -231,7 +235,6 @@ class PthreadServer : public utserver::HTTPServer {
         servers.push_back(server_conn_fd);
         ::listen(server_conn_fd, 65535);
 
-
         // thread_count represents the number of cores
         static const int ac_count = ceil((float)thread_count/(float)core_per_acceptor);
         pthread_t ac_threads[ac_count];
@@ -242,12 +245,10 @@ class PthreadServer : public utserver::HTTPServer {
             if(s != 0) handle_error("pthread_create");
             if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
         }
-
         // wait for pthreads to join
         for(auto pt : ac_threads){
             (void) pthread_join(pt, nullptr);
         }
-
     };
 };
 
