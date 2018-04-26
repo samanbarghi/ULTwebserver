@@ -128,11 +128,11 @@ class FibreServer : public utserver::HTTPServer {
     std::once_flag signalRegisterFlag;
 
     static void intHandler(int signal) {
-        for (auto it = FibreServer::servers.begin(); it != FibreServer::servers.end(); ++it) {
+        /*for (auto it = FibreServer::servers.begin(); it != FibreServer::servers.end(); ++it) {
             SYSCALL(lfClose(*it));
             FibreServer::servers.erase(it);
-        }
-        exit(1);
+        }*/
+        exit(0);
     };
 
     static void timer(void* vhttpserver) {
@@ -222,14 +222,13 @@ class FibreServer : public utserver::HTTPServer {
     static void acceptor(void* arg) {
         FibreServer* fserver = (FibreServer*) arg;
         // StackPool pool(defaultStackSize);
-		FibrePool pool;
+        FibrePool pool;
         struct sockaddr_in serv_addr;
         while(true){
             socklen_t addrlen = sizeof(serv_addr);
-            int* fd = (int*)(malloc(sizeof(int)));
-            *fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
-            if (*fd >= 0)
-                pool.start(FibreServer::handle_connection, (void*) new ServerAndFd(fserver, *fd));
+            int fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
+            if (fd >= 0)
+                pool.start(FibreServer::handle_connection, (void*) new ServerAndFd(fserver, fd));
             else {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
@@ -260,7 +259,6 @@ class FibreServer : public utserver::HTTPServer {
         SYSCALL(getsockname(serverConnection, (sockaddr*)&serv_addr, &addrlen));
         FibreServer::servers.push_back(serverConnection);
         SYSCALL(lfListen(serverConnection, 65535));
-
 
         static const bool background = true;
         static const int ac_count = 2;

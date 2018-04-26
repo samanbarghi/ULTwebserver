@@ -148,11 +148,11 @@ class PthreadServer : public utserver::HTTPServer {
     static std::vector<int> servers;
 
     static void intHandler(int signal) {
-        PthreadServer::stop = true;
+/*        PthreadServer::stop = true;
         for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
             ::close(*it);
             PthreadServer::servers.erase(it);
-        }
+        }*/
         exit(0);
     };
 
