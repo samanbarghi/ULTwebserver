@@ -196,6 +196,7 @@ class PthreadServer : public utserver::HTTPServer {
             if(conn_fd >=0){
                 pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(pserver, conn_fd));
             }else{
+                std::cout << errno << std::endl;
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
             }
@@ -232,7 +233,7 @@ class PthreadServer : public utserver::HTTPServer {
 
 
         // thread_count represents the number of cores
-        static const int ac_count = ceil(thread_count/core_per_acceptor);
+        static const int ac_count = ceil((float)thread_count/(float)core_per_acceptor);
         pthread_t ac_threads[ac_count];
         for (int i = 0; i < ac_count; ++i){
             pthread_attr_t attr;
