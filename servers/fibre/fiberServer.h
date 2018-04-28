@@ -171,6 +171,9 @@ class FibreServer : public utserver::HTTPServer {
         cluster.reserve(cluster_count); // default already exists
         sproc.reserve(thread_count); // default already exists
 
+        // for better poller to thread ratio
+        int effective_cluster_size = (thread_count)/cluster_count;
+
         cluster.push_back(&CurrCluster());
         sproc.push_back(&CurrProcessor());
         int cluster_idx = 0;
@@ -179,7 +182,7 @@ class FibreServer : public utserver::HTTPServer {
             if (sproc_idx == 0) { // mainSP
                 tid = pthread_self();
             } else {
-                if (sproc_idx % cluster_size == 0) {
+                if (sproc_idx % effective_cluster_size == 0) {
                     cluster_idx += 1;
                     cluster.push_back(new PollerCluster);
                 }
