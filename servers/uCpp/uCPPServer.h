@@ -7,8 +7,18 @@
 #include "utserver.h"
 #include <uSocket.h>
 
+// uC++ specific
+ unsigned int uDefaultPreemption() {                     //timeslicing not required
+	return 0;
+} // uDefaultPreemption
+unsigned int uDefaultSpin() {                           // kernel schedule-spinning off
+	return 0;
+} // uDefaultPreemption
+unsigned int uMainStackSize() {                         // reduce,    default 500K
+	return 60 * 1000;
+} // uMainStackSize
+
 namespace ucppserver {
-const size_t MAXIMUM_THREADS_PER_CLUSTER = 8;
 void handle_connection(void *arg1, void *arg2);
 class UCPPServer;
 _Task Server;
@@ -132,7 +142,7 @@ class UCPPServer : public utserver::HTTPServer {
 
  public:
     UCPPServer(const std::string name, int p, int tc) : HTTPServer(name, p, tc){
-        cluster_count = (thread_count / (MAXIMUM_THREADS_PER_CLUSTER + 1)) + 1;
+		// TODO: fix timer
         HTTPServer::setDate(this);
    }
 
