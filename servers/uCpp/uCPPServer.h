@@ -140,10 +140,16 @@ class UCPPServer : public utserver::HTTPServer {
     // number of clusters
     size_t cluster_count;
 
+    static void intHandler(int signal) {
+        exit(0);
+    };
+
+
  public:
     UCPPServer(const std::string name, int p, int tc) : HTTPServer(name, p, tc){
 		// TODO: fix timer
         HTTPServer::setDate(this);
+        signal(SIGINT, UCPPServer::intHandler);
    }
 
     ~UCPPServer() {
