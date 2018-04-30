@@ -9,9 +9,14 @@
 #include "libfibre/fibre.h"
 #include "utserver.h"
 
+#define AUTO_SPAWN   // vs. acceptor per fibre
+
+// used to pre-spawn fibres with acceptor per fibre
+static const int FIBRES = 60000;
 
 namespace libfibreserver {
 class FibreServer;
+static void handle_connection(void*);
 // to pass to handle_connection
 struct ServerAndFd {
     FibreServer* fserver;
@@ -101,37 +106,20 @@ class FibreHTTPSession : public utserver::HTTPSession {
         // Libfibre yields internally
         //Fibre::yield();
     };
-
-    // Function to handle connections for each http session
-    static void handle_connection(void *arg) {
-        ServerAndFd* sfd = (ServerAndFd*)arg;
-        // fd is set as the value of pointer
-        FibreHTTPSession session(*(utserver::HTTPServer*)(sfd->fserver), sfd->connfd);
-        session.serve();
-        SYSCALL(lfClose(sfd->connfd));
-        delete sfd;
-    }
 };
 
 class FibreServer : public utserver::HTTPServer {
  protected:
     // number of clusters
     size_t cluster_count;
-    static const int cluster_size = 8;
+    static const int cluster_size = 16;
 
     std::vector<PollerCluster*> cluster;
     std::vector<SystemProcessor*> sproc;
 
-    int serverConnection; // Server Connection
-
-    static std::vector<int> servers;
     std::once_flag signalRegisterFlag;
 
     static void intHandler(int signal) {
-        /*for (auto it = FibreServer::servers.begin(); it != FibreServer::servers.end(); ++it) {
-            SYSCALL(lfClose(*it));
-            FibreServer::servers.erase(it);
-        }*/
         exit(0);
     };
 
@@ -165,6 +153,8 @@ class FibreServer : public utserver::HTTPServer {
     }
 
  public:
+    int serverConnection; // Server Connection
+
     FibreServer(const std::string name, int p, int tc, int cpubase = -1) : HTTPServer(name, p, tc){
 
         cluster_count = ((thread_count - 1) / cluster_size) + 1; // ceiling-div
@@ -219,22 +209,31 @@ class FibreServer : public utserver::HTTPServer {
     }
 
 	// wrapper to pass to pool
-	static void* handle_connection(void* arg){
-		FibreHTTPSession::handle_connection(arg);
+	static void* process(void* arg){
+		handle_connection(arg);
 	}
     static void acceptor(void* arg) {
         FibreServer* fserver = (FibreServer*) arg;
         // StackPool pool(defaultStackSize);
         FibrePool pool;
         struct sockaddr_in serv_addr;
+        int fd[32];
         while(true){
             socklen_t addrlen = sizeof(serv_addr);
-            int fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
-            if (fd >= 0)
-                pool.start(FibreServer::handle_connection, (void*) new ServerAndFd(fserver, fd));
-            else {
+            fd[0] = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
+            if (fd[0] < 0) {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
+            } else {
+                int i = 1;
+                for (; i < 16; i += 1) {
+                   addrlen = sizeof(serv_addr);
+                   fd[i] = accept4(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen, SOCK_NONBLOCK);
+                   if (fd[i] < 0) break;
+                }
+                for (int j = 0; j < i; j += 1) {
+                    pool.start(FibreServer::process, (void*) new ServerAndFd(fserver, fd[j]));
+                }
             }
         }
         pool.stop();
@@ -260,9 +259,9 @@ class FibreServer : public utserver::HTTPServer {
         // query and report addressing info
         socklen_t addrlen = sizeof(serv_addr);
         SYSCALL(getsockname(serverConnection, (sockaddr*)&serv_addr, &addrlen));
-        FibreServer::servers.push_back(serverConnection);
         SYSCALL(lfListen(serverConnection, 65535));
 
+#ifdef AUTO_SPAWN
         static const bool background = true;
         static const int ac_count = 2;
         Fibre* acfs[cluster_count][ac_count];
@@ -278,8 +277,51 @@ class FibreServer : public utserver::HTTPServer {
             }
         }
         SYSCALL(lfClose(serverConnection));
+#else
+        Fibre** fibres = new Fibre*[FIBRES];
+        for (size_t i = 0 ; i < FIBRES; i += 1){
+            fibres[i] = new Fibre(*cluster[i%cluster_count], defaultStackSize);
+            fibres[i]->run(handle_connection, (void*)this);
+        }
+
+        for (size_t i = 0 ; i < FIBRES; i += 1){
+            delete fibres[i];
+        }
+
+        SYSCALL(lfClose(serverConnection));
+#endif
     };
 };
+
+#ifdef AUTO_SPAWN
+// Function to handle connections for each http session
+static void handle_connection(void *arg) {
+	ServerAndFd* sfd = (ServerAndFd*)arg;
+	// fd is set as the value of pointer
+	FibreHTTPSession session(*(utserver::HTTPServer*)(sfd->fserver), sfd->connfd);
+	session.serve();
+	SYSCALL(lfClose(sfd->connfd));
+	delete sfd;
+}
+#else // AUTO_SPAWN
+// Function to handle connections for each http session
+static void handle_connection(void *arg) {
+    FibreServer* fserver = (FibreServer*) arg;
+    struct sockaddr_in serv_addr;
+    while(true){
+        socklen_t addrlen = sizeof(serv_addr);
+        int fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
+        if (fd >= 0){
+            FibreHTTPSession session(*(utserver::HTTPServer*)(fserver), fd);
+            session.serve();
+            SYSCALL(lfClose(fd));
+        }else {
+            assert(errno == ECONNRESET);
+            std::cout << "ECONNRESET" << std::endl;
+        }
+    }
+}
+#endif // AUTO_SPAWN
 
 };
 #endif //NEWWEBSERVER_LIBFIBRESERVER_H

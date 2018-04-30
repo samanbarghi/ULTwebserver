@@ -8,6 +8,7 @@
 #include <uSocket.h>
 #include <uRealTime.h>
 
+#define AUTO_SPAWN
 // uC++ specific
  unsigned int uDefaultPreemption() {                     //timeslicing not required
 	return 0;
@@ -22,9 +23,72 @@ unsigned int uMainStackSize() {                         // reduce,    default 50
 enum { THREAD_STACK_SIZE = 16 * 1008 };
 
 namespace ucppserver {
+template<typename ACCEPTOR>
 void handle_connection(void *arg1, void *arg2);
 class UCPPServer;
 _Task Server;
+
+_Task Acceptor {
+	UCPPServer* ucppserver;
+	uSocketServer &sockserver;
+	Server &server;
+	void main();
+  public:
+    uSocketAccept acceptor;
+	Acceptor( uSocketServer &socks, uCluster& clus, Server &server, UCPPServer *ucppserver ) :
+        uBaseTask( clus, THREAD_STACK_SIZE ),sockserver( socks ),
+        server( server ), ucppserver(ucppserver), acceptor(socks) {
+	} // Acceptor::Acceptor
+}; // Acceptor
+
+_Task Server {
+	UCPPServer* ucppserver;
+	uSocketServer &sockserver;
+    uCluster& clus;
+	Acceptor *terminate;
+	int acceptorCnt;
+	bool timeout;
+  public:
+	Server( uSocketServer &socks, uCluster& clus, UCPPServer *ucppserver  ) :
+        uBaseTask( clus, THREAD_STACK_SIZE ), sockserver( socks ), clus(clus),
+        ucppserver(ucppserver), acceptorCnt( 1 ), timeout( false ) {
+	} // Server::Server
+	void connection() {
+	} // Server::connection
+	void complete( Acceptor *terminate, bool timeout ) {
+		Server::terminate = terminate;
+		Server::timeout = timeout;
+	} // Server::complete
+  private:
+	void main() {
+		new Acceptor( sockserver, clus, *this, ucppserver );				// create initial acceptor
+		for ( ;; ) {
+			_Accept( connection ) {
+				new Acceptor( sockserver, clus, *this, ucppserver );		// create new acceptor after a connection
+				acceptorCnt += 1;
+			} or _Accept( complete ) {					// acceptor has completed with client
+				delete terminate;						// delete must appear here or deadlock
+				acceptorCnt -= 1;
+		  if ( acceptorCnt == 0 ) break;				// if no outstanding connections, stop
+				if ( timeout ) {
+					new Acceptor( sockserver, clus, *this, ucppserver );	// create new acceptor after a timeout
+					acceptorCnt += 1;
+				} // if
+			} // _Accept
+		} // for
+	} // Server::main
+}; // Server
+
+void Acceptor::main() {
+	try {
+		server.connection();							// tell server about client connection
+		handle_connection<Acceptor>(ucppserver, this);
+		server.complete( this, false );					// terminate
+	} catch( uSocketAccept::OpenTimeout ) {
+		server.complete( this, true );					// terminate
+	} // try
+} // Acceptor::main
+
 
 _Task AcceptorWorker {
     uSocketServer &socket;
@@ -33,7 +97,7 @@ _Task AcceptorWorker {
     void main() {
     for ( ;; ) {
         acceptor.accept();				// accept client connection
-        handle_connection(ucppserver, this);
+        handle_connection<AcceptorWorker>(ucppserver, this);
         acceptor.close();				// close client connection
     } // for
     } // AcceptorWorker::main
@@ -44,11 +108,12 @@ _Task AcceptorWorker {
 }; // AcceptorWorker
 
 // uCPPHTTP Session
+template<typename ACCEPTOR>
 class UCPPHTTPSession : public utserver::HTTPSession {
  private:
-    AcceptorWorker *connection;
+    ACCEPTOR *connection;
  public:
-    UCPPHTTPSession(utserver::HTTPServer &s, AcceptorWorker *c) : HTTPSession(s), connection(c) {};
+    UCPPHTTPSession(utserver::HTTPServer &s, ACCEPTOR *c) : HTTPSession(s), connection(c) {};
 
     ssize_t recv(void *buf, size_t len, int flags) {
     ssize_t rlen;
@@ -58,7 +123,8 @@ class UCPPHTTPSession : public utserver::HTTPSession {
         int terrno = rderr.errNo();
         if ( terrno != EPIPE && terrno != ECONNRESET ) {
             std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
-            exit( EXIT_FAILURE );
+            // exit( EXIT_FAILURE ); // keep going to avoid server failure
+            // during expeirments
     } // if
       // if we are here it means the connection is closed
     rlen = 0;     // rlen not set for exception
@@ -93,12 +159,13 @@ private:
 }; // PeriodicTask
 
 // Function to handle connections for each http session
+template<typename ACCEPTOR>
 void handle_connection(void *arg1, void *arg2) {
     utserver::HTTPServer *server = (utserver::HTTPServer *) arg1;
-    AcceptorWorker *ccon = (AcceptorWorker*) arg2;
-    UCPPHTTPSession session(*server, ccon);
+    ACCEPTOR *ccon = (ACCEPTOR*) arg2;
+    UCPPHTTPSession<ACCEPTOR> session(*server, ccon);
     session.serve();
-} // handle_connection
+}
 
 cpu_set_t mask; // large -> do not put on stack
 class UCPPServer : public utserver::HTTPServer {
@@ -157,6 +224,15 @@ class UCPPServer : public utserver::HTTPServer {
 
         sockserver = new uSocketServer(port);
         {
+#ifdef AUTO_SPAWN
+            std::vector<Server*> servers(cluster_count);
+            for(size_t cl = 0 ; cl < cluster_count; cl += 1){
+    			servers.push_back( new Server(*sockserver, *cluster[cl], this));
+            }
+            for(auto server: servers){
+                delete server;
+            }
+#else // AUTO_SPAWN
             static const size_t USER_THREADS = 60000;
             AcceptorWorker** workers = new AcceptorWorker*[USER_THREADS];
             for ( int ut = 0; ut < USER_THREADS; ut += 1 ) { // user threads
@@ -167,6 +243,7 @@ class UCPPServer : public utserver::HTTPServer {
             for ( int ut = 0; ut < USER_THREADS; ut += 1 ) { // destroy user threads
                 delete workers[ut];
             } // for
+#endif // AUTO_SPAW
         } //
     } // start()
 }; // UCPPServer

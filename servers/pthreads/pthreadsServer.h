@@ -11,8 +11,14 @@
 #include <cmath>    // ceil
 #include "utserver.h"
 
+#define AUTO_SPAWN
+
+static const int PTHREADS = 60000;
+
 namespace pthreadsserver {
 const int defaultStackSize = 16 * 1024; // 16KB
+
+static void *handle_connection(void *arg);
 
 // handle errors from pthread functions
 void handle_error(const std::string&& msg){
@@ -126,18 +132,9 @@ class PthreadHTTPSession : public utserver::HTTPSession {
         pthread_yield();
     };
 
-    // Function to handle connections for each http session
-    static void *handle_connection(void *arg) {
-        ServerAndFd* snf = (ServerAndFd*) arg;
-        PthreadHTTPSession session(*(utserver::HTTPServer*)snf->pserver, snf->connfd);
-        session.serve();
-        ::close(snf->connfd);
-        delete(snf);
-    }
 };
 class PthreadServer : public utserver::HTTPServer {
  protected:
-    int server_conn_fd;
 	std::vector<pthread_t> pthreads;
 	// pthread that runs the timer
 	pthread_t timer_pthread;
@@ -145,14 +142,7 @@ class PthreadServer : public utserver::HTTPServer {
     // determines the number of acceptor threads per core
     static const int core_per_acceptor = 2;
 
-    static std::vector<int> servers;
-
     static void intHandler(int signal) {
-/*        PthreadServer::stop = true;
-        for (auto it = PthreadServer::servers.begin(); it != PthreadServer::servers.end(); ++it) {
-            ::close(*it);
-            PthreadServer::servers.erase(it);
-        }*/
         exit(0);
     };
 
@@ -188,10 +178,10 @@ class PthreadServer : public utserver::HTTPServer {
     static void* acceptor(void* arg){
         PthreadServer* pserver = (PthreadServer*) arg;
         PthreadPool pool(utserver::ThreadPool<Lock,CV>::defaultPoolSize);
-        while (!PthreadServer::stop) {
+        while (true) {
             int conn_fd = ::accept4(pserver->server_conn_fd, (struct sockaddr *) nullptr, nullptr, 0);
             if(conn_fd >=0){
-                pool.start(PthreadHTTPSession::handle_connection, (void*) new ServerAndFd(pserver, conn_fd));
+                pool.start(handle_connection, (void*) new ServerAndFd(pserver, conn_fd));
             }else{
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
@@ -200,7 +190,7 @@ class PthreadServer : public utserver::HTTPServer {
         pool.stop();
     }
  public:
-    static std::atomic_bool stop;
+    int server_conn_fd;
 	// threadcount here is used to determine the number of cores available
     PthreadServer(const std::string name, int p, int threadcount, int cpubase) : HTTPServer(name, p, threadcount){
         // handle SIGINT to close the main socket
@@ -235,9 +225,9 @@ class PthreadServer : public utserver::HTTPServer {
         if (bind(server_conn_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
             handle_error("Error on binding");
         };
-        servers.push_back(server_conn_fd);
         ::listen(server_conn_fd, 65535);
 
+#ifdef AUTO_SPAWN
         // thread_count represents the number of cores
         static const int ac_count = ceil((float)thread_count/(float)core_per_acceptor);
         pthread_t ac_threads[ac_count];
@@ -252,8 +242,49 @@ class PthreadServer : public utserver::HTTPServer {
         for(auto pt : ac_threads){
             (void) pthread_join(pt, nullptr);
         }
+#else
+        pthread_t* pthreads = new pthread_t(PTHREADS);
+        pthread_attr_t attr;
+        setPthreadAttr(attr);
+        for(size_t i = 0; i < PTHREADS; i++){
+            int s = pthread_create(&pthreads[i], &attr, handle_connection, (void *) this);
+            if(s != 0) handle_error("pthread_create");
+        }
+        if( pthread_attr_destroy(&attr) != 0) handle_error("pthread_attr_destroy");
+        // wait for pthreads to join
+        for(size_t i = 0; i < PTHREADS; i++){
+            (void) pthread_join(pthreads[i], nullptr);
+        }
+#endif
     };
 };
 
+#ifdef AUTO_SPAWN
+// Function to handle connections for each http session
+static void *handle_connection(void *arg) {
+    ServerAndFd* snf = (ServerAndFd*) arg;
+    PthreadHTTPSession session(*(utserver::HTTPServer*)snf->pserver, snf->connfd);
+    session.serve();
+    ::close(snf->connfd);
+    delete(snf);
+}
+#else
+static void *handle_connection(void *arg) {
+    PthreadServer* pserver = (PthreadServer*) arg;
+    struct sockaddr_in serv_addr;
+    while(true){
+        socklen_t addrlen = sizeof(serv_addr);
+        int fd = accept(pserver->server_conn_fd, (sockaddr*)&serv_addr, &addrlen);
+        if (fd >= 0){
+            PthreadHTTPSession session(*(utserver::HTTPServer*)pserver, fd);
+            session.serve();
+            ::close(fd);
+        }else {
+            assert(errno == ECONNRESET);
+            std::cout << "ECONNRESET" << std::endl;
+        }
+    }
+}
+#endif
 };
 #endif //NEWWEBSERVER_PTHREADSERVER_H

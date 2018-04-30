@@ -1,8 +1,6 @@
 #include "pthreadsServer.h"
 
 using namespace utserver;
-std::vector<int> pthreadsserver::PthreadServer::servers;
-std::atomic_bool pthreadsserver::PthreadServer::stop(false);
 
 #define PORT 8800
 
