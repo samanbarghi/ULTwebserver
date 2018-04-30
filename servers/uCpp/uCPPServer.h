@@ -51,17 +51,17 @@ class UCPPHTTPSession : public utserver::HTTPSession {
     UCPPHTTPSession(utserver::HTTPServer &s, AcceptorWorker *c) : HTTPSession(s), connection(c) {};
 
     ssize_t recv(void *buf, size_t len, int flags) {
-	ssize_t rlen;
-	try {
-		rlen = connection->acceptor.recv((char*)buf, len, flags);
+    ssize_t rlen;
+    try {
+        rlen = connection->acceptor.recv((char*)buf, len, flags);
     } catch( uSocketAccept::ReadFailure & rderr ) {
-		int terrno = rderr.errNo();
-		if ( terrno != EPIPE && terrno != ECONNRESET ) {
-			std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
-			exit( EXIT_FAILURE );
-	} // if
+        int terrno = rderr.errNo();
+        if ( terrno != EPIPE && terrno != ECONNRESET ) {
+            std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
+            exit( EXIT_FAILURE );
+    } // if
       // if we are here it means the connection is closed
-	  rlen = 0;     // rlen not set for exception
+    rlen = 0;     // rlen not set for exception
     } // try
         return rlen;
     };
