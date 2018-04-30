@@ -6,6 +6,7 @@
 #define NEWWEBSERVER_UCPPSERVER_H
 #include "utserver.h"
 #include <uSocket.h>
+#include <uRealTime.h>
 
 // uC++ specific
  unsigned int uDefaultPreemption() {                     //timeslicing not required
@@ -18,85 +19,36 @@ unsigned int uMainStackSize() {                         // reduce,    default 50
 	return 60 * 1000;
 } // uMainStackSize
 
+enum { THREAD_STACK_SIZE = 16 * 1008 };
+
 namespace ucppserver {
 void handle_connection(void *arg1, void *arg2);
 class UCPPServer;
 _Task Server;
 
-_Task Acceptor {
-	UCPPServer* ucppserver;
-	uSocketServer &sockserver;
-	Server &server;
-	void main();
-  public:
-    uSocketAccept acceptor;
-	Acceptor( uSocketServer &socks, Server &server, UCPPServer *ucppserver ) : sockserver( socks ), server( server ), ucppserver(ucppserver), acceptor(socks) {
-	} // Acceptor::Acceptor
-}; // Acceptor
-_Task Server {
-	UCPPServer* ucppserver;
-	uSocketServer &sockserver;
-	Acceptor *terminate;
-	int acceptorCnt;
-	bool timeout;
-  public:
-	Server( uSocketServer &socks, UCPPServer *ucppserver  ) : sockserver( socks ), ucppserver(ucppserver), acceptorCnt( 1 ), timeout( false ) {
-	} // Server::Server
-	void connection() {
-	} // Server::connection
-	void complete( Acceptor *terminate, bool timeout ) {
-		Server::terminate = terminate;
-		Server::timeout = timeout;
-	} // Server::complete
-  private:
-	void main() {
-		new Acceptor( sockserver, *this, ucppserver );				// create initial acceptor
-		for ( ;; ) {
-			_Accept( connection ) {
-				new Acceptor( sockserver, *this, ucppserver );		// create new acceptor after a connection
-				acceptorCnt += 1;
-			} or _Accept( complete ) {					// acceptor has completed with client
-				delete terminate;						// delete must appear here or deadlock
-				acceptorCnt -= 1;
-		  if ( acceptorCnt == 0 ) break;				// if no outstanding connections, stop
-				if ( timeout ) {
-					new Acceptor( sockserver, *this, ucppserver );	// create new acceptor after a timeout
-					acceptorCnt += 1;
-				} // if
-			} // _Accept
-		} // for
-	} // Server::main
-}; // Server
+_Task AcceptorWorker {
+    uSocketServer &socket;
+    UCPPServer* ucppserver;
 
-void Acceptor::main() {
-	try {
-		server.connection();							// tell server about client connection
-		handle_connection(ucppserver, this);
-		server.complete( this, false );					// terminate
-	} catch( uSocketAccept::OpenTimeout ) {
-		server.complete( this, true );					// terminate
-	} // try
-} // Acceptor::main
+    void main() {
+    for ( ;; ) {
+        acceptor.accept();				// accept client connection
+        handle_connection(ucppserver, this);
+        acceptor.close();				// close client connection
+    } // for
+    } // AcceptorWorker::main
+  public:
+    uSocketAccept acceptor;				// create acceptor but do not accept connection
+    AcceptorWorker( uSocketServer &socket, uCluster &clus, UCPPServer* server) :
+    uBaseTask( clus, THREAD_STACK_SIZE ), socket( socket ), acceptor( socket, false ), ucppserver(server){}
+}; // AcceptorWorker
 
-// Ignore the timer for uC++
-/*_PeriodicTask PeriodicHeaderDateTask{
-public:
-    PeriodicHeaderDateTask( uDuration period, HTTPServer* httpserver) :
-        uPeriodicBaseTask(period), httpserver(httpserver){
-        };
-protected:
-    void main(){
-        HTTPServer::setDate(httpserver);
-    }
-private:
-    HTTPServer* httpserver;
-}*/
 // uCPPHTTP Session
 class UCPPHTTPSession : public utserver::HTTPSession {
  private:
-    Acceptor *connection;
+    AcceptorWorker *connection;
  public:
-    UCPPHTTPSession(utserver::HTTPServer &s, Acceptor *c) : HTTPSession(s), connection(c) {};
+    UCPPHTTPSession(utserver::HTTPServer &s, AcceptorWorker *c) : HTTPSession(s), connection(c) {};
 
     ssize_t recv(void *buf, size_t len, int flags) {
 	ssize_t rlen;
@@ -108,8 +60,8 @@ class UCPPHTTPSession : public utserver::HTTPSession {
 			std::cerr << "ERROR: URL read failure " << terrno << " " << strerror( terrno ) << std::endl;
 			exit( EXIT_FAILURE );
 	} // if
-        // if we are here it means the connection is closed
-	  rlen = 0;				// rlen not set for exception
+      // if we are here it means the connection is closed
+	  rlen = 0;     // rlen not set for exception
     } // try
         return rlen;
     };
@@ -123,40 +75,101 @@ class UCPPHTTPSession : public utserver::HTTPSession {
     };
 
     void yield() {
-
     };
 };
+
+// Set HTTP date and time
+_PeriodicTask PeriodicHeaderDateTask{
+public:
+    PeriodicHeaderDateTask( uDuration period, utserver::HTTPServer& httpserver) :
+        uPeriodicBaseTask(period), httpserver(httpserver){
+        }; // PeriodicHeaderDateTask()
+protected:
+    void main(){
+        utserver::HTTPServer::setDate(&httpserver);
+    } // main()
+private:
+    utserver::HTTPServer& httpserver;
+}; // PeriodicTask
 
 // Function to handle connections for each http session
 void handle_connection(void *arg1, void *arg2) {
     utserver::HTTPServer *server = (utserver::HTTPServer *) arg1;
-    Acceptor *ccon = (Acceptor*) arg2;
+    AcceptorWorker *ccon = (AcceptorWorker*) arg2;
     UCPPHTTPSession session(*server, ccon);
     session.serve();
-}
+} // handle_connection
 
+cpu_set_t mask; // large -> do not put on stack
 class UCPPServer : public utserver::HTTPServer {
  protected:
+     uSocketServer *sockserver;
+     // number of threads per cluster
+     static const size_t cluster_size = 1;
     // number of clusters
     size_t cluster_count;
 
+    std::vector<uCluster*> cluster;
+    std::vector<uProcessor*> sproc;
+
+    static void intHandler(int signal) {
+        exit(0);
+    }; // intHandler
+
  public:
-    UCPPServer(const std::string name, int p, int tc) : HTTPServer(name, p, tc){
-		// TODO: fix timer
-        HTTPServer::setDate(this);
-   }
+    UCPPServer(const std::string name, int p, int tc, int cpubase) : HTTPServer(name, p, tc){
+
+        cluster_count = ((thread_count - 1) / cluster_size) + 1; // ceiling-div
+        cluster.reserve(cluster_count); // default already exists
+        sproc.reserve(thread_count); // default already exists
+
+        cluster.push_back(&uThisCluster());
+        sproc.push_back(&uThisProcessor());
+
+        int cluster_idx = 0;
+        for (int sproc_idx = 0; sproc_idx < thread_count; sproc_idx += 1) {
+            if (sproc_idx != 0) { // mainSP
+                if (sproc_idx % cluster_size == 0) {
+                    cluster_idx += 1;
+                    cluster.push_back(new uCluster("Worker Cluster"));
+                } // if
+                sproc.push_back(new uProcessor(*cluster[cluster_idx]));
+            } // if sproc_idx != 0
+            if (cpubase >= 0) {
+                CPU_ZERO( &mask );
+                CPU_SET( cpubase + sproc_idx, &mask );
+                sproc[sproc_idx]->setAffinity(mask);
+            } // if cpubase
+        }
+
+        // signal handler
+        signal(SIGINT, UCPPServer::intHandler);
+   } // UCPPServer()
 
     ~UCPPServer() {
-    }
+    } // ~UCPPServer()
 
     void start() {
         serverStarted.store(true);
-		uSocketServer sockserver(port);
-		{
-			Server s(sockserver, this);
-		}
-    };
-};
+
+        // Start the timer to set the server date
+        PeriodicHeaderDateTask phdt(1, *this);
+
+        sockserver = new uSocketServer(port);
+        {
+            static const size_t USER_THREADS = 60000;
+            AcceptorWorker** workers = new AcceptorWorker*[USER_THREADS];
+            for ( int ut = 0; ut < USER_THREADS; ut += 1 ) { // user threads
+                workers[ut] = new AcceptorWorker( *sockserver, *cluster[ut % cluster_count], this);
+                if ( ut % 1000 == 0 ) uThisTask().yield(); // allow workers to start
+            } // for
+
+            for ( int ut = 0; ut < USER_THREADS; ut += 1 ) { // destroy user threads
+                delete workers[ut];
+            } // for
+        } //
+    } // start()
+}; // UCPPServer
 
 }; // namespace
 #endif //NEWWEBSERVER_UCPPSERVER_H

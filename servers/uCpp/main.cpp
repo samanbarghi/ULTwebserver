@@ -12,18 +12,17 @@ const HTTPResponse helloWorld(const HTTPRequest& request){
 void uMain::main() {
 
     if (argc < 2) {
-        printf("USAGE: %s NUMBER_OF_THREADS\n", argv[0]);
+        printf("USAGE: %s NUMBER_OF_THREADS CPU_BASE\n", argv[0]);
         return;
     }
     //set total number of worker threads
     size_t thread_count = atoi(argv[1]);
-    uProcessor processor[(int)thread_count];
+    int cpubase = atoi(argv[2]);
 
-    ucppserver::UCPPServer server("u", PORT, thread_count);
-    // Start the timer to set the server date
-    // Ignore the timer for uC++
-    //PeriodicHeaderDateTask phdt(1, &server);
+    ucppserver::UCPPServer server("u", PORT, thread_count, cpubase);
 
     server.registerRoute("/plaintext", helloWorld);
     server.start();
+
+    uRetCode = 0;
 }
