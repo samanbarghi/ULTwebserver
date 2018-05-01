@@ -217,23 +217,15 @@ class FibreServer : public utserver::HTTPServer {
         // StackPool pool(defaultStackSize);
         FibrePool pool;
         struct sockaddr_in serv_addr;
-        int fd[32];
+        int fd;
         while(true){
             socklen_t addrlen = sizeof(serv_addr);
-            fd[0] = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
-            if (fd[0] < 0) {
+            fd = lfAccept(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen);
+            if (fd < 0) {
                 assert(errno == ECONNRESET);
                 std::cout << "ECONNRESET" << std::endl;
             } else {
-                int i = 1;
-                for (; i < 16; i += 1) {
-                   addrlen = sizeof(serv_addr);
-                   fd[i] = accept4(fserver->serverConnection, (sockaddr*)&serv_addr, &addrlen, SOCK_NONBLOCK);
-                   if (fd[i] < 0) break;
-                }
-                for (int j = 0; j < i; j += 1) {
-                    pool.start(FibreServer::process, (void*) new ServerAndFd(fserver, fd[j]));
-                }
+                pool.start(FibreServer::process, (void*) new ServerAndFd(fserver, fd));
             }
         }
         pool.stop();
@@ -262,12 +254,13 @@ class FibreServer : public utserver::HTTPServer {
         SYSCALL(lfListen(serverConnection, 65535));
 
 #ifdef AUTO_SPAWN
-        static const bool background = true;
-        static const int ac_count = 2;
+        static const bool background = false;
+        static const int ac_count = 1;
         Fibre* acfs[cluster_count][ac_count];
         for (int i = 0; i < cluster_count; i++) {
             for (int j = 0; j < ac_count; j++) {
                 acfs[i][j] = new Fibre(*cluster[i], defaultStackSize, background);
+                acfs[i][j]->setPriority(topPriority);
                 acfs[i][j]->run(acceptor, (void*)this);
             }
         }
@@ -278,9 +271,10 @@ class FibreServer : public utserver::HTTPServer {
         }
         SYSCALL(lfClose(serverConnection));
 #else
+        static const bool background = false;
         Fibre** fibres = new Fibre*[FIBRES];
         for (size_t i = 0 ; i < FIBRES; i += 1){
-            fibres[i] = new Fibre(*cluster[i%cluster_count], defaultStackSize);
+            fibres[i] = new Fibre(*cluster[i%cluster_count], defaultStackSize, background);
             fibres[i]->run(handle_connection, (void*)this);
         }
 

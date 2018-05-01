@@ -229,7 +229,8 @@ class PthreadServer : public utserver::HTTPServer {
 
 #ifdef AUTO_SPAWN
         // thread_count represents the number of cores
-        static const int ac_count = ceil((float)thread_count/(float)core_per_acceptor);
+//        static const int ac_count = ceil((float)thread_count/(float)core_per_acceptor);
+        static const int ac_count = 1;
         pthread_t ac_threads[ac_count];
         for (int i = 0; i < ac_count; ++i){
             pthread_attr_t attr;

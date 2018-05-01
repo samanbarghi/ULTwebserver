@@ -1,5 +1,5 @@
-set(PROJECT ucpp)
-set(name uCpp)
+set(PROJECT ucpp1)
+set(name uCpp1)
 if(uCpp)
     SET(UCPPFLAGS "-nodebug -noverify -multi")
     add_definitions(${UCPPFLAGS})

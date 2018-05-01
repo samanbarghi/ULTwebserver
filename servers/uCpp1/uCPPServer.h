@@ -172,7 +172,7 @@ class UCPPServer : public utserver::HTTPServer {
  protected:
      uSocketServer *sockserver;
      // number of threads per cluster
-     static const size_t cluster_size = 16;
+     static const size_t cluster_size = 1;
     // number of clusters
     size_t cluster_count;
 

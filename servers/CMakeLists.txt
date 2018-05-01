@@ -14,6 +14,7 @@ endif()
 find_program(uCpp u++)
 if(uCpp)
     add_subdirectory(uCpp)
+    add_subdirectory(uCpp1)
 endif()
 
 
